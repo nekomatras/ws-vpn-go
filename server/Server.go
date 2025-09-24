@@ -2,10 +2,10 @@ package server
 
 import (
 	"encoding/hex"
-	// "errors"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"ws-vpn-go/common"
 
 	"github.com/gorilla/websocket"
@@ -26,16 +26,17 @@ type Server struct {
 	wsTunnel       common.Tunel
 
 	writeToInterfaceCh       chan []byte
-	clinetConnectionRegister map[string]*websocket.Conn
+	clinetConnectionRegister map[common.IpAddress]*websocket.Conn
 }
 
 func NewServer(wsUrl string) *Server {
 	log.Printf("Create server: WebSocket URL: \"%s\"; MTU: %d", wsUrl, DefaultMTU)
 	return &Server{
-		localWebSocketURL:  wsUrl,
-		mtu:                DefaultMTU,
-		isInited:           false,
-		writeToInterfaceCh: make(chan []byte, 256),
+		localWebSocketURL:        wsUrl,
+		mtu:                      DefaultMTU,
+		isInited:                 false,
+		writeToInterfaceCh:       make(chan []byte, 256),
+		clinetConnectionRegister: make(map[common.IpAddress]*websocket.Conn),
 	}
 }
 
@@ -93,8 +94,8 @@ func (server *Server) connectionHandler(w http.ResponseWriter, r *http.Request) 
 
 	defer ws.Close()
 
-	clientIP := r.Header.Get("ClientIp") // заголовки нечувствительны к регистру
-	if clientIP == "" {
+	clientIP := common.GetIpFromString(r.Header.Get("ClientIp"))
+	if clientIP == common.GetAllZeroIp() {
 		log.Printf("Unable to read target IP in request from: %s. Connection closed", sourceIp)
 		return
 	}
@@ -102,31 +103,36 @@ func (server *Server) connectionHandler(w http.ResponseWriter, r *http.Request) 
 	server.clinetConnectionRegister[clientIP] = ws
 	defer delete(server.clinetConnectionRegister, clientIP)
 
-	log.Printf("Client %s connected from %s", clientIP, sourceIp)
+	log.Printf("Client %s connected from %s", clientIP.String(), sourceIp)
 
 	for {
 		_, message, err := ws.ReadMessage()
 		if err != nil {
 			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				log.Printf("[%s] Unable to read from WS: %s", clientIP, err)
+				log.Printf("[%s] Unable to read from WS: %s", clientIP.String(), err)
 			}
 			break
 		}
 
-		log.Printf("[%s] Got message from WS connection: %s\n", clientIP, hex.Dump(message))
+		log.Printf("[%s] Got message from WS connection:\n%s", clientIP.String(), hex.Dump(message))
 
 		server.writeToInterface(message)
 	}
 
-	log.Printf("[%s] Client from %s disconnected", clientIP, sourceIp)
+	log.Printf("[%s] Client from %s disconnected", clientIP.String(), sourceIp)
 }
 
 func (server *Server) listenWebSocket() error {
 	var err error
 
-	http.HandleFunc(server.localWebSocketURL, server.connectionHandler)
+	u, err := url.Parse(server.localWebSocketURL)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	err = http.ListenAndServe(":8080", nil)
+	http.HandleFunc(u.Path, server.connectionHandler)
+
+	err = http.ListenAndServe(u.Host, nil)
 	if err != nil {
 		return fmt.Errorf("ListenAndServe error: %w", err)
 	}
@@ -153,10 +159,12 @@ func (server *Server) Init() error {
 	server.isInited = true
 	log.Printf("Create VPN interface %s", server.interfaceName)
 
-	err = server.listenWebSocket()
-	if err != nil {
-		return err
-	}
+	go func() {
+		err = server.listenWebSocket()
+		if err != nil {
+			log.Fatalf("Error while WS listen: %w", err)
+		}
+	}()
 
 	go server.writerToInterfaceLoop()
 	go server.readerFromInterfaceLoop()
@@ -176,6 +184,7 @@ func (server *Server) writerToInterfaceLoop() {
 			if err != nil {
 				log.Printf("[IF] Write error: %s", err)
 			}
+			fmt.Printf("Send to interface, packets remain in channale: %d", len(server.writeToInterfaceCh))
 		}
 	}
 }
@@ -190,33 +199,18 @@ func (server *Server) readerFromInterfaceLoop() {
 		}
 
 		packet := buf[:n]
-
-		if len(packet) < 20 { // минимальный размер IPv4 заголовка
-			log.Printf("[IF] Package len < 20")
+		sourceIp, destIp, err := common.GetIpFromPacket(packet)
+		if err != nil {
+			log.Printf("Unable to get IP from paket: %s", err)
 			continue
 		}
 
-		// IPv4
-		ipHeaderLen := int(packet[0]&0x0F) * 4 // размер заголовка в байтах
-		if len(packet) < ipHeaderLen {
-			log.Printf("[IF] Package len < ipHeaderLen")
-			continue
-		}
-
-		// Адрес назначения: байты 16-19
-		destIP := fmt.Sprintf("%d.%d.%d.%d",
-			packet[16], packet[17], packet[18], packet[19])
-
-		// Адрес источника: байты 12-15 (если нужно)
-		srcIP := fmt.Sprintf("%d.%d.%d.%d",
-			packet[12], packet[13], packet[14], packet[15])
-
-		client, ok := server.clinetConnectionRegister[destIP]
+		client, ok := server.clinetConnectionRegister[destIp]
 		if ok {
 			client.WriteMessage(websocket.BinaryMessage, packet)
-			log.Printf("Server interface got package:\n%s", hex.Dump(buf[:n]))
+			log.Printf("Server interface got package:\n%s", hex.Dump(packet))
 		} else {
-			log.Printf("Got package from %s to unknown dest ip address %s", srcIP, destIP)
+			log.Printf("Got package from %s to unknown dest ip address %s", sourceIp.String(), destIp.String())
 		}
 
 	}
