@@ -3,23 +3,31 @@ package main
 import (
 	"flag"
 	"log"
+	"log/slog"
+	"os"
 	"time"
 	"ws-vpn-go/client"
+	"ws-vpn-go/common"
 	"ws-vpn-go/server"
 )
 
 func main() {
 
+	baseLogger := common.NewLogger(os.Stdout, slog.LevelDebug)
+	logger := common.GetLoggerWithName(baseLogger, "123")
+
+	logger.Debug("Test")
+	logger.Warn("Aboba")
+	logger.Error("ABABO")
+
 	mode := flag.String("mode", "none", "Select mode")
 	remoteUrl := flag.String(
 		"remote",
-		"ws://7.7.7.7:8080/ws",
-		"Set remote WebSocket URL. Example: \"ws://7.7.7.7:8080/ws\"")
+		"ws://8.8.8.8:8080/ws",
+		"Set remote WebSocket URL. Example: \"ws://8.8.8.8:8080/ws\"")
 	flag.Parse()
 
 	TimeToWait := 5 * time.Second
-
-	// remoteUrl := "ws://7.7.7.7:8080/ws"
 
 	clientInterfaceName := "tunClient"
 	clientAaddress := "10.0.0.5/24"
@@ -29,7 +37,7 @@ func main() {
 
 	if *mode == "client" {
 
-		client := client.NewClient(*remoteUrl)
+		client := client.New(*remoteUrl)
 		client.SetInterfaceAddress(clientAaddress)
 		client.SetInterfaceName(clientInterfaceName)
 		error := client.Init()
@@ -53,7 +61,7 @@ func main() {
 
 	} else if *mode == "server" {
 
-		server := server.NewServer(*remoteUrl)
+		server := server.New(*remoteUrl)
 		server.SetInterfaceAddress(remoteInterfaceAaddress)
 		server.SetInterfaceName(remoteInterfaceName)
 		error := server.Init()

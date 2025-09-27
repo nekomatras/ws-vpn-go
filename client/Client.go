@@ -1,5 +1,10 @@
 package client
 
+/*
+1. Клиент должен получать MTU от сервера при открытии тунеля и устанавливать его в свой интерфейс после этого
+2.
+*/
+
 import (
 	"encoding/hex"
 	"errors"
@@ -27,7 +32,7 @@ type Client struct {
 	wsTunnel       common.Tunel
 }
 
-func NewClient(wsUrl string) *Client {
+func New(wsUrl string) *Client {
 	log.Printf("Create client: Target URL: \"%s\"; MTU: %d", wsUrl, DefaultMTU)
 	return &Client{
 		remoteWebSocketURL:  wsUrl,

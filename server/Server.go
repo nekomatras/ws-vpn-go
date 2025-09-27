@@ -29,7 +29,7 @@ type Server struct {
 	clinetConnectionRegister map[common.IpAddress]*websocket.Conn
 }
 
-func NewServer(wsUrl string) *Server {
+func New(wsUrl string) *Server {
 	log.Printf("Create server: WebSocket URL: \"%s\"; MTU: %d", wsUrl, DefaultMTU)
 	return &Server{
 		localWebSocketURL:        wsUrl,
