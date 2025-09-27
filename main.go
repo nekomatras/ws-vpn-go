@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"log"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -14,11 +14,6 @@ import (
 func main() {
 
 	baseLogger := common.NewLogger(os.Stdout, slog.LevelDebug)
-	logger := common.GetLoggerWithName(baseLogger, "123")
-
-	logger.Debug("Test")
-	logger.Warn("Aboba")
-	logger.Error("ABABO")
 
 	mode := flag.String("mode", "none", "Select mode")
 	remoteUrl := flag.String(
@@ -37,13 +32,16 @@ func main() {
 
 	if *mode == "client" {
 
-		client := client.New(*remoteUrl)
+		logger := common.GetLoggerWithName(baseLogger, "Client")
+
+		client := client.New(*remoteUrl, logger)
 		client.SetInterfaceAddress(clientAaddress)
 		client.SetInterfaceName(clientInterfaceName)
 		error := client.Init()
 
 		if !client.IsInited() {
-			log.Fatalln(error)
+			logger.Error(error.Error())
+			os.Exit(-1)
 		}
 
 		for {
@@ -55,23 +53,26 @@ func main() {
 				break
 			}
 
-			log.Printf("Unable to connect remote WS, wait %s and retry...", TimeToWait)
+			logger.Warn(fmt.Sprintf("Unable to connect remote WS, wait %s and retry...", TimeToWait))
 			time.Sleep(TimeToWait)
 		}
 
 	} else if *mode == "server" {
 
-		server := server.New(*remoteUrl)
+		logger := common.GetLoggerWithName(baseLogger, "Server")
+
+		server := server.New(*remoteUrl, logger)
 		server.SetInterfaceAddress(remoteInterfaceAaddress)
 		server.SetInterfaceName(remoteInterfaceName)
 		error := server.Init()
 		if error != nil {
-			log.Fatalln(error)
+			logger.Error(error.Error())
+			os.Exit(-1)
 		}
-		log.Println("------------------")
 
 	} else {
-		log.Fatalf("Unknown mode: -mode=%s", *mode)
+		baseLogger.Error(fmt.Sprintf("Unknown mode: -mode=%s", *mode))
+		os.Exit(-1)
 	}
 
 	select {}

@@ -69,13 +69,13 @@ func (h *customHandler) WithGroup(name string) slog.Handler               { retu
 
 func levelShort(l slog.Level) string {
 	switch {
-	case l < slog.LevelDebug:
+	case l == slog.LevelDebug:
 		return "D"
-	case l < slog.LevelInfo:
+	case l == slog.LevelInfo:
 		return "I"
-	case l < slog.LevelWarn:
+	case l == slog.LevelWarn:
 		return "W"
-	case l < slog.LevelError:
+	case l == slog.LevelError:
 		return "E"
 	default:
 		return "E"

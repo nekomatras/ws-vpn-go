@@ -1,13 +1,12 @@
 package client
 
-
-
 import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"ws-vpn-go/common"
 
 	"github.com/gorilla/websocket"
@@ -27,15 +26,18 @@ type Client struct {
 
 	localInterface common.Interface
 	wsTunnel       common.Tunel
+
+	logger         *slog.Logger
 }
 
-func New(wsUrl string) *Client {
-	log.Printf("Create client: Target URL: \"%s\"; MTU: %d", wsUrl, DefaultMTU)
+func New(wsUrl string, logger *slog.Logger) *Client {
+	logger.Info(fmt.Sprintf("Create client: Target URL: \"%s\"; MTU: %d", wsUrl, DefaultMTU))
 	return &Client{
 		remoteWebSocketURL:  wsUrl,
 		mtu:                 DefaultMTU,
 		isInited:            false,
-		isConnectedToRemote: false}
+		isConnectedToRemote: false,
+		logger: logger}
 }
 
 func (client *Client) RemoteWebSocketURL() string {
@@ -59,12 +61,12 @@ func (client *Client) IsConnectedToRemote() bool {
 }
 
 func (client *Client) SetInterfaceName(interfaceName string) {
-	log.Printf("Set interface name: %s", interfaceName)
+	client.logger.Info(fmt.Sprintf("Set interface name: %s", interfaceName))
 	client.interfaceName = interfaceName
 }
 
 func (client *Client) SetInterfaceAddress(interfaceAddress string) {
-	log.Printf("Set interface address: %s", interfaceAddress)
+	client.logger.Info(fmt.Sprintf("Set interface address: %s", interfaceAddress))
 	client.interfaceAddress = interfaceAddress
 }
 
@@ -83,7 +85,7 @@ func (client *Client) ConnectToRemote() error {
 		return fmt.Errorf("WebSocket connection error: %w", err)
 	}
 
-	log.Printf("WebSocket connected to remore: %s", client.remoteWebSocketURL)
+	client.logger.Info(fmt.Sprintf("WebSocket connected to remore: %s", client.remoteWebSocketURL))
 	client.isConnectedToRemote = true
 
 	return nil
@@ -91,7 +93,7 @@ func (client *Client) ConnectToRemote() error {
 
 func (client *Client) Init() error {
 	var err error
-	log.Println("Setup interface...")
+	client.logger.Info("Setup interface...")
 	client.localInterface, err = common.CreateInterface(client.interfaceName)
 	if err != nil {
 		return fmt.Errorf("Interface creation error: %w", err)
@@ -103,7 +105,7 @@ func (client *Client) Init() error {
 	}
 
 	client.isInited = true
-	log.Printf("Create VPN interface %s", client.interfaceName)
+	client.logger.Info(fmt.Sprintf("Create VPN interface %s", client.interfaceName))
 
 	return nil
 }
@@ -132,14 +134,16 @@ func (client *Client) inretfaceLoop() {
 
 		n, err := client.localInterface.Read(buf)
 		if err != nil {
-			log.Fatalf("Interface read error: %v", err)
+			client.logger.Error(fmt.Sprintf("Interface read error: %v", err))
+			os.Exit(-1)
 		}
 
-		log.Printf("Client interface got package:\n%s", hex.Dump(buf[:n]))
+		client.logger.Debug(fmt.Sprintf("Client interface got package:\n%s", hex.Dump(buf[:n])))
 
 		err = client.wsTunnel.WriteMessage(websocket.BinaryMessage, buf[:n])
 		if err != nil {
-			log.Fatalf("WebSocket write error: %v", err)
+			client.logger.Error(fmt.Sprintf("WebSocket write error: %v", err))
+			os.Exit(-1)
 		}
 	}
 }
@@ -149,12 +153,14 @@ func (client *Client) tunelLoop() {
 	for {
 		_, message, err := client.wsTunnel.ReadMessage()
 		if err != nil {
-			log.Fatalf("WebSocket read error: %v", err)
+			client.logger.Error(fmt.Sprintf("WebSocket read error: %v", err))
+			os.Exit(-1)
 		}
 
 		_, err = client.localInterface.Write(message)
 		if err != nil {
-			log.Fatalf("Interface write error: %v", err)
+			client.logger.Error(fmt.Sprintf("Interface write error: %v", err))
+			os.Exit(-1)
 		}
 	}
 

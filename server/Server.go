@@ -3,9 +3,10 @@ package server
 import (
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"ws-vpn-go/common"
 
 	"github.com/gorilla/websocket"
@@ -27,17 +28,30 @@ type Server struct {
 
 	writeToInterfaceCh       chan []byte
 	clinetConnectionRegister map[common.IpAddress]*websocket.Conn
+
+	logger         *slog.Logger
+	upgrader       websocket.Upgrader
 }
 
-func New(wsUrl string) *Server {
-	log.Printf("Create server: WebSocket URL: \"%s\"; MTU: %d", wsUrl, DefaultMTU)
-	return &Server{
+func New(wsUrl string, logger *slog.Logger) *Server {
+
+	logger.Info(fmt.Sprintf("Create server: WebSocket URL: \"%s\"; MTU: %d", wsUrl, DefaultMTU))
+
+	server:= &Server{
 		localWebSocketURL:        wsUrl,
 		mtu:                      DefaultMTU,
 		isInited:                 false,
 		writeToInterfaceCh:       make(chan []byte, 256),
 		clinetConnectionRegister: make(map[common.IpAddress]*websocket.Conn),
 	}
+
+	upgrader := websocket.Upgrader{
+		CheckOrigin: server.checkBeforeUpgrade,
+	}
+
+	server.upgrader = upgrader
+
+	return server
 }
 
 func (server *Server) LocalWebSocketURL() string {
@@ -57,30 +71,27 @@ func (server *Server) IsInited() bool {
 }
 
 func (server *Server) SetInterfaceName(interfaceName string) {
-	log.Printf("Set interface name: %s", interfaceName)
+	server.logger.Info(fmt.Sprintf("Set interface name: %s", interfaceName))
 	server.interfaceName = interfaceName
 }
 
 func (server *Server) SetInterfaceAddress(interfaceAddress string) {
-	log.Printf("Set interface address: %s", interfaceAddress)
+	server.logger.Info(fmt.Sprintf("Set interface address: %s", interfaceAddress))
 	server.interfaceAddress = interfaceAddress
 }
 
-// Upgrade HTTP connection to WebSocket
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		log.Printf("Try to open WS connection to: %s", r.RemoteAddr)
-		return true // проверить ключ из заголовка
-	},
+func (server *Server) checkBeforeUpgrade(request *http.Request) bool {
+	server.logger.Info(fmt.Sprintf("Try to open WS connection to: %s", request.RemoteAddr))
+	return true
 }
 
 func (server *Server) connectionHandler(w http.ResponseWriter, r *http.Request) {
 
 	sourceIp := r.RemoteAddr
 
-	ws, err := upgrader.Upgrade(w, r, nil)
+	ws, err := server.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("Connection upgrade failed for %s; Error: %s", sourceIp, err)
+		server.logger.Error(fmt.Sprintf("Connection upgrade failed for %s; Error: %s", sourceIp, err))
 		return
 	}
 
@@ -88,30 +99,30 @@ func (server *Server) connectionHandler(w http.ResponseWriter, r *http.Request) 
 
 	clientIP := common.GetIpFromString(r.Header.Get("ClientIp"))
 	if clientIP == common.GetAllZeroIp() {
-		log.Printf("Unable to read target IP in request from: %s. Connection closed", sourceIp)
+		server.logger.Error(fmt.Sprintf("Unable to read target IP in request from: %s. Connection closed", sourceIp))
 		return
 	}
 
 	server.clinetConnectionRegister[clientIP] = ws
 	defer delete(server.clinetConnectionRegister, clientIP)
 
-	log.Printf("Client %s connected from %s", clientIP.String(), sourceIp)
+	server.logger.Info(fmt.Sprintf("Client %s connected from %s", clientIP.String(), sourceIp))
 
 	for {
 		_, message, err := ws.ReadMessage()
 		if err != nil {
 			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				log.Printf("[%s] Unable to read from WS: %s", clientIP.String(), err)
+				server.logger.Warn(fmt.Sprintf("[%s] Unable to read from WS: %s", clientIP.String(), err))
 			}
 			break
 		}
 
-		log.Printf("[%s] Got message from WS connection:\n%s", clientIP.String(), hex.Dump(message))
+		server.logger.Debug(fmt.Sprintf("[%s] Got message from WS connection:\n%s", clientIP.String(), hex.Dump(message)))
 
 		server.writeToInterface(message)
 	}
 
-	log.Printf("[%s] Client from %s disconnected", clientIP.String(), sourceIp)
+	server.logger.Info(fmt.Sprintf("[%s] Client from %s disconnected", clientIP.String(), sourceIp))
 }
 
 func (server *Server) listenWebSocket() error {
@@ -119,7 +130,8 @@ func (server *Server) listenWebSocket() error {
 
 	u, err := url.Parse(server.localWebSocketURL)
 	if err != nil {
-		log.Fatal(err)
+		server.logger.Error(err.Error())
+		os.Exit(-1)
 	}
 
 	http.HandleFunc(u.Path, server.connectionHandler)
@@ -129,7 +141,7 @@ func (server *Server) listenWebSocket() error {
 		return fmt.Errorf("ListenAndServe error: %w", err)
 	}
 
-	log.Printf("Server listening on:%s", server.localWebSocketURL)
+	server.logger.Info(fmt.Sprintf("Server listening on:%s", server.localWebSocketURL))
 
 	return nil
 }
@@ -137,7 +149,7 @@ func (server *Server) listenWebSocket() error {
 func (server *Server) Init() error {
 	var err error
 
-	log.Println("Setup interface...")
+	server.logger.Info("Setup interface...")
 	server.localInterface, err = common.CreateInterface(server.interfaceName)
 	if err != nil {
 		return fmt.Errorf("Interface creation error: %w", err)
@@ -149,12 +161,13 @@ func (server *Server) Init() error {
 	}
 
 	server.isInited = true
-	log.Printf("Create VPN interface %s", server.interfaceName)
+	server.logger.Info(fmt.Sprintf("Create VPN interface %s", server.interfaceName))
 
 	go func() {
 		err = server.listenWebSocket()
 		if err != nil {
-			log.Fatalf("Error while WS listen: %w", err)
+			server.logger.Error(fmt.Sprintf("Error while WS listen: %w", err))
+			os.Exit(-1)
 		}
 	}()
 
@@ -169,14 +182,15 @@ func (server *Server) writerToInterfaceLoop() {
 		select {
 		case packet, ok := <-server.writeToInterfaceCh:
 			if !ok { // канал закрыт
-				log.Fatal("[IF] Write channel closed, exiting writer loop")
+				server.logger.Error("[IF] Write channel closed, exiting writer loop")
+				os.Exit(-1)
 				return
 			}
 			_, err := server.localInterface.Write(packet)
 			if err != nil {
-				log.Printf("[IF] Write error: %s", err)
+				server.logger.Error(fmt.Sprintf("[IF] Write error: %s", err))
 			}
-			fmt.Printf("Send to interface, packets remain in channale: %d", len(server.writeToInterfaceCh))
+			server.logger.Debug(fmt.Sprintf("Send to interface, packets remain in channale: %d", len(server.writeToInterfaceCh)))
 		}
 	}
 }
@@ -186,23 +200,24 @@ func (server *Server) readerFromInterfaceLoop() {
 	for {
 		n, err := server.localInterface.Read(buf)
 		if err != nil {
-			log.Printf("[IF] Read error: %s", err)
+			server.logger.Error(fmt.Sprintf("[IF] Read error: %s", err))
+			os.Exit(-1)
 			return
 		}
 
 		packet := buf[:n]
 		sourceIp, destIp, err := common.GetIpFromPacket(packet)
 		if err != nil {
-			log.Printf("Unable to get IP from paket: %s", err)
+			server.logger.Debug(fmt.Sprintf("Unable to get IP from paket: %s", err))
 			continue
 		}
 
 		client, ok := server.clinetConnectionRegister[destIp]
 		if ok {
 			client.WriteMessage(websocket.BinaryMessage, packet)
-			log.Printf("Server interface got package:\n%s", hex.Dump(packet))
+			server.logger.Debug(fmt.Sprintf("Server interface got package:\n%s", hex.Dump(packet)))
 		} else {
-			log.Printf("Got package from %s to unknown dest ip address %s", sourceIp.String(), destIp.String())
+			server.logger.Warn(fmt.Sprintf("Got package from %s to unknown dest ip address %s", sourceIp.String(), destIp.String()))
 		}
 
 	}
@@ -212,6 +227,6 @@ func (server *Server) writeToInterface(data []byte) {
 	select {
 	case server.writeToInterfaceCh <- data:
 	default:
-		log.Println("[IF] Write channel full, dropping packet")
+		server.logger.Error("[IF] Write channel full, dropping packet")
 	}
 }
