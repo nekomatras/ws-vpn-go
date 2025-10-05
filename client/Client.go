@@ -20,6 +20,8 @@ type Client struct {
 	interfaceName    string
 	interfaceAddress string
 
+	key string
+
 	mtu                 uint
 	isInited            bool
 	isConnectedToRemote bool
@@ -38,6 +40,10 @@ func New(wsUrl string, logger *slog.Logger) *Client {
 		isInited:            false,
 		isConnectedToRemote: false,
 		logger: logger}
+}
+
+func (client *Client) SetKey(key string) {
+	client.key = key
 }
 
 func (client *Client) RemoteWebSocketURL() string {
@@ -79,6 +85,7 @@ func (client *Client) ConnectToRemote() error {
 
 	header := make(http.Header)
 	header.Add("ClientIP", client.interfaceAddress)
+	header.Add("Key", client.key)
 
 	client.wsTunnel, _, err = websocket.DefaultDialer.Dial(client.remoteWebSocketURL, header)
 	if err != nil {

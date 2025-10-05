@@ -11,32 +11,34 @@ import (
 	"ws-vpn-go/server"
 )
 
+var configFile = flag.String(
+	"config",
+	"/etc/ws-wpn.conf",
+	"Set path to configuration file. Example: -config=/etc/ws-wpn.conf")
+
 func main() {
+	flag.Parse()
 
 	baseLogger := common.NewLogger(os.Stdout, slog.LevelDebug)
 
-	mode := flag.String("mode", "none", "Select mode")
-	remoteUrl := flag.String(
-		"remote",
-		"ws://8.8.8.8:8080/ws",
-		"Set remote WebSocket URL. Example: \"ws://8.8.8.8:8080/ws\"")
-	flag.Parse()
+	config, err := common.LoadConfig(*configFile)
+	if (err != nil) {
+		baseLogger.Error(err.Error())
+		os.Exit(-1)
+	}
 
 	TimeToWait := 5 * time.Second
 
-	clientInterfaceName := "tunClient"
-	clientAaddress := "10.0.0.5/24"
+	fmt.Println(*config)
 
-	remoteInterfaceAaddress := "10.0.0.1/24"
-	remoteInterfaceName := "tunServer"
-
-	if *mode == "client" {
+	if config.Mode == "client" {
 
 		logger := common.GetLoggerWithName(baseLogger, "Client")
 
-		client := client.New(*remoteUrl, logger)
-		client.SetInterfaceAddress(clientAaddress)
-		client.SetInterfaceName(clientInterfaceName)
+		client := client.New(config.RemoteUrl, logger)
+		client.SetInterfaceAddress(config.InterfaceAddress)
+		client.SetInterfaceName(config.InterfaceName)
+		client.SetKey(config.Key)
 		error := client.Init()
 
 		if !client.IsInited() {
@@ -57,13 +59,14 @@ func main() {
 			time.Sleep(TimeToWait)
 		}
 
-	} else if *mode == "server" {
+	} else if config.Mode == "server" {
 
 		logger := common.GetLoggerWithName(baseLogger, "Server")
 
-		server := server.New(*remoteUrl, logger)
-		server.SetInterfaceAddress(remoteInterfaceAaddress)
-		server.SetInterfaceName(remoteInterfaceName)
+		server := server.New(config.RemoteUrl, logger)
+		server.SetInterfaceAddress(config.InterfaceAddress)
+		server.SetInterfaceName(config.InterfaceName)
+		server.SetKey(config.Key)
 		error := server.Init()
 		if error != nil {
 			logger.Error(error.Error())
@@ -71,7 +74,7 @@ func main() {
 		}
 
 	} else {
-		baseLogger.Error(fmt.Sprintf("Unknown mode: -mode=%s", *mode))
+		baseLogger.Error(fmt.Sprintf("Unknown mode: %s", config.Mode))
 		os.Exit(-1)
 	}
 

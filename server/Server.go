@@ -20,6 +20,8 @@ type Server struct {
 	interfaceName    string
 	interfaceAddress string
 
+	key string
+
 	mtu      uint
 	isInited bool
 
@@ -29,29 +31,33 @@ type Server struct {
 	writeToInterfaceCh       chan []byte
 	clinetConnectionRegister map[common.IpAddress]*websocket.Conn
 
-	logger         *slog.Logger
-	upgrader       websocket.Upgrader
+	logger   *slog.Logger
+	upgrader websocket.Upgrader
 }
 
 func New(wsUrl string, logger *slog.Logger) *Server {
 
 	logger.Info(fmt.Sprintf("Create server: WebSocket URL: \"%s\"; MTU: %d", wsUrl, DefaultMTU))
 
-	server:= &Server{
+	server := &Server{
 		localWebSocketURL:        wsUrl,
 		mtu:                      DefaultMTU,
 		isInited:                 false,
 		writeToInterfaceCh:       make(chan []byte, 256),
 		clinetConnectionRegister: make(map[common.IpAddress]*websocket.Conn),
+		logger:                   logger,
 	}
 
 	upgrader := websocket.Upgrader{
 		CheckOrigin: server.checkBeforeUpgrade,
 	}
-
 	server.upgrader = upgrader
 
 	return server
+}
+
+func (server *Server) SetKey(key string) {
+	server.key = key
 }
 
 func (server *Server) LocalWebSocketURL() string {
@@ -80,9 +86,20 @@ func (server *Server) SetInterfaceAddress(interfaceAddress string) {
 	server.interfaceAddress = interfaceAddress
 }
 
-func (server *Server) checkBeforeUpgrade(request *http.Request) bool {
-	server.logger.Info(fmt.Sprintf("Try to open WS connection to: %s", request.RemoteAddr))
-	return true
+func (server *Server) checkKey(request *http.Request) bool {
+	key := request.Header.Get("Key")
+	if key == server.key {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (server *Server) checkClientAddress(request *http.Request) bool {
+	clientAddress := request.Header.Get("ClientIP")
+	ip := common.GetIpFromString(clientAddress)
+	_, exist := server.clinetConnectionRegister[ip]
+	return !exist
 }
 
 func (server *Server) connectionHandler(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +142,37 @@ func (server *Server) connectionHandler(w http.ResponseWriter, r *http.Request) 
 	server.logger.Info(fmt.Sprintf("[%s] Client from %s disconnected", clientIP.String(), sourceIp))
 }
 
+func (server *Server) infoHandler(w http.ResponseWriter, r *http.Request) {
+	if server.checkKey(r) {
+		info := common.ServerInfo{
+			MTU:                   server.mtu,
+			InternalServerAddress: server.interfaceAddress,
+		}
+		info.WriteToResponse(w)
+		w.WriteHeader(http.StatusAccepted)
+	} else {
+		server.defaultHandler(w, r)
+	}
+}
+
+func (server *Server) defaultHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "САДОВОД-ЛЮБИТЕЛЬ")
+	w.WriteHeader(http.StatusOK)
+}
+
+func (server *Server) checkBeforeUpgrade(request *http.Request) bool {
+	if server.checkKey(request) && server.checkClientAddress(request) {
+		server.logger.Info(fmt.Sprintf("Try to open WS connection from: %s", request.RemoteAddr))
+		return true
+	} else {
+		server.logger.Warn(fmt.Sprintf("Try to open WS connection with wrong key [%s] or address [%s]; Connection form: %s",
+			request.Header.Get("Key"),
+			request.Header.Get("ClientIP"),
+			request.RemoteAddr))
+		return false
+	}
+}
+
 func (server *Server) listenWebSocket() error {
 	var err error
 
@@ -135,13 +183,13 @@ func (server *Server) listenWebSocket() error {
 	}
 
 	http.HandleFunc(u.Path, server.connectionHandler)
+	http.HandleFunc("/info", server.infoHandler)
+	http.HandleFunc("/", server.defaultHandler)
 
 	err = http.ListenAndServe(u.Host, nil)
 	if err != nil {
-		return fmt.Errorf("ListenAndServe error: %w", err)
+		return fmt.Errorf("Unable to listen WS connections: %w", err)
 	}
-
-	server.logger.Info(fmt.Sprintf("Server listening on:%s", server.localWebSocketURL))
 
 	return nil
 }
@@ -171,6 +219,8 @@ func (server *Server) Init() error {
 		}
 	}()
 
+	server.logger.Info(fmt.Sprintf("WS listening on: %s", server.localWebSocketURL))
+
 	go server.writerToInterfaceLoop()
 	go server.readerFromInterfaceLoop()
 
@@ -178,21 +228,20 @@ func (server *Server) Init() error {
 }
 
 func (server *Server) writerToInterfaceLoop() {
-	for {
-		select {
-		case packet, ok := <-server.writeToInterfaceCh:
-			if !ok { // канал закрыт
-				server.logger.Error("[IF] Write channel closed, exiting writer loop")
-				os.Exit(-1)
-				return
-			}
-			_, err := server.localInterface.Write(packet)
-			if err != nil {
-				server.logger.Error(fmt.Sprintf("[IF] Write error: %s", err))
-			}
-			server.logger.Debug(fmt.Sprintf("Send to interface, packets remain in channale: %d", len(server.writeToInterfaceCh)))
+
+	for packet := range server.writeToInterfaceCh {
+		_, err := server.localInterface.Write(packet)
+		if err != nil {
+			server.logger.Error(fmt.Sprintf("[IF] Write error: %s", err))
 		}
+		server.logger.Debug(
+			fmt.Sprintf(
+				"Send to interface, packets remain in channale: %d",
+				len(server.writeToInterfaceCh)))
 	}
+
+	server.logger.Error("[IF] Write channel closed, exiting writer loop")
+	os.Exit(-1)
 }
 
 func (server *Server) readerFromInterfaceLoop() {
