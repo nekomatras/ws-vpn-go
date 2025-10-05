@@ -214,7 +214,7 @@ func (server *Server) Init() error {
 	go func() {
 		err = server.listenWebSocket()
 		if err != nil {
-			server.logger.Error(fmt.Sprintf("Error while WS listen: %w", err))
+			server.logger.Error(fmt.Sprintf("Error while WS listen: %v", err))
 			os.Exit(-1)
 		}
 	}()
