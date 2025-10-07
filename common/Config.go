@@ -12,7 +12,7 @@ type Config struct {
 	InterfaceName    string `json:"interface_name"`
 	InterfaceAddress string `json:"interface_address"`
 	Key              string `json:"key"`
-	MTU                 int `json:"mtu"`
+	MTU                uint `json:"mtu"`
 }
 
 func LoadConfig(path string) (*Config, error) {

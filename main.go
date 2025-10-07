@@ -63,11 +63,15 @@ func main() {
 
 		logger := common.GetLoggerWithName(baseLogger, "Server")
 
-		server := server.New(config.RemoteUrl, logger)
-		server.SetInterfaceAddress(config.InterfaceAddress)
-		server.SetInterfaceName(config.InterfaceName)
-		server.SetKey(config.Key)
-		error := server.Init()
+		server := server.New(
+			config.InterfaceAddress,
+			config.InterfaceName,
+			config.MTU,
+			config.RemoteUrl,
+			config.Key,
+			logger)
+
+		error := server.Start()
 		if error != nil {
 			logger.Error(error.Error())
 			os.Exit(-1)

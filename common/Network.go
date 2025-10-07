@@ -9,12 +9,12 @@ import (
 )
 
 type Interface = *water.Interface
-type Tunel = *websocket.Conn
+type Tunnel = *websocket.Conn
 
 func CreateInterface(name string) (Interface, error) {
 	parameters := water.PlatformSpecificParams{}
 
-	if name == "" {
+	if name != "" {
 		parameters.Name = name
 	}
 
@@ -29,11 +29,16 @@ func CreateInterface(name string) (Interface, error) {
 	return ifce, nil
 }
 
-func SetupInterface(iface Interface, address string) error {
+func SetupInterface(iface Interface, address string, mtu uint) error {
 
 	err := exec.Command("ip", "addr", "add", address, "dev", iface.Name()).Run()
 	if err != nil {
 		return fmt.Errorf("Failed to add address to interface %s: %w", iface.Name(), err)
+	}
+
+	err = exec.Command("ip", "link", "set", "dev", iface.Name(), "mtu", fmt.Sprintf("%d", mtu)).Run()
+	if err != nil {
+		return fmt.Errorf("failed to set mtu on interface %s: %w", iface.Name(), err)
 	}
 
 	err = exec.Command("ip", "link", "set", "dev", iface.Name(), "up").Run()

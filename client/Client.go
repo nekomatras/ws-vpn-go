@@ -27,7 +27,7 @@ type Client struct {
 	isConnectedToRemote bool
 
 	localInterface common.Interface
-	wsTunnel       common.Tunel
+	wsTunnel       common.Tunnel
 
 	logger         *slog.Logger
 }
@@ -106,7 +106,7 @@ func (client *Client) Init() error {
 		return fmt.Errorf("Interface creation error: %w", err)
 	}
 
-	err = common.SetupInterface(client.localInterface, client.interfaceAddress)
+	err = common.SetupInterface(client.localInterface, client.interfaceAddress, client.mtu)
 	if err != nil {
 		return fmt.Errorf("Interface setup error: %w", err)
 	}
