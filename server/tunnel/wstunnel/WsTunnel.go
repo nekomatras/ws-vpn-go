@@ -51,15 +51,6 @@ func New(wsUrl string, key string, serverInfo common.ServerInfo, logger *slog.Lo
 	return tunnel
 }
 
-func (tunnel *WsTunnel) checkKey(request *http.Request) bool {
-	key := request.Header.Get("Key")
-	if key == tunnel.key {
-		return true
-	} else {
-		return false
-	}
-}
-
 func (tunnel *WsTunnel) checkClientAddress(request *http.Request) bool {
 	clientAddress := request.Header.Get("ClientIP")
 	ip := common.GetIpFromString(clientAddress)
@@ -106,22 +97,8 @@ func (tunnel *WsTunnel) connectionHandler(w http.ResponseWriter, r *http.Request
 	tunnel.logger.Info(fmt.Sprintf("[%s] Client from %s disconnected", clientIP.String(), sourceIp))
 }
 
-func (tunnel *WsTunnel) infoHandler(w http.ResponseWriter, r *http.Request) {
-	if tunnel.checkKey(r) {
-		tunnel.serverInfo.WriteToResponse(w)
-		w.WriteHeader(http.StatusAccepted)
-	} else {
-		tunnel.defaultHandler(w, r)
-	}
-}
-
-func (tunnel *WsTunnel) defaultHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "САДОВОД-ЛЮБИТЕЛЬ")
-	w.WriteHeader(http.StatusOK)
-}
-
 func (tunnel *WsTunnel) checkBeforeUpgrade(request *http.Request) bool {
-	if tunnel.checkKey(request) && tunnel.checkClientAddress(request) {
+	if common.CheckKey(request, tunnel.key) && tunnel.checkClientAddress(request) {
 		tunnel.logger.Info(fmt.Sprintf("Try to open WS connection from: %s", request.RemoteAddr))
 		return true
 	} else {
@@ -133,23 +110,13 @@ func (tunnel *WsTunnel) checkBeforeUpgrade(request *http.Request) bool {
 	}
 }
 
-func (tunnel *WsTunnel) listenWebSocket() error {
-	var err error
-
+func (tunnel *WsTunnel) RegisterHandlers(mux *http.ServeMux) error {
 	u, err := url.Parse(tunnel.localWebSocketURL)
 	if err != nil {
-		return fmt.Errorf("Unable to parse WS URL: %w", err)
+		return fmt.Errorf("unable to parse web-socket url: %w", err)
 	}
 
-	http.HandleFunc(u.Path, tunnel.connectionHandler)
-	http.HandleFunc("/info", tunnel.infoHandler)
-	http.HandleFunc("/", tunnel.defaultHandler) //добавить проброс из вне
-
-	err = http.ListenAndServe(u.Host, nil)
-	if err != nil {
-		return fmt.Errorf("Unable to listen WS connections: %w", err)
-	}
-
+	mux.HandleFunc(u.Path, tunnel.connectionHandler)
 	return nil
 }
 
@@ -162,12 +129,7 @@ func (tunnel *WsTunnel) writeToChannel(data []byte) {
 }
 
 func (tunnel *WsTunnel) Listen() error {
-	tunnel.tunnelError = tunnel.listenWebSocket()
-	if tunnel.tunnelError != nil {
-		tunnel.logger.Error(fmt.Sprintf("Error while WS listen: %v", tunnel.tunnelError))
-	}
-
-	return tunnel.tunnelError
+	return nil
 }
 
 func (tunnel *WsTunnel) WriteTo(target io.Writer) error {
@@ -183,7 +145,7 @@ func (tunnel *WsTunnel) WriteTo(target io.Writer) error {
 				len(tunnel.receivedPackageCh)))
 	}
 
-	return fmt.Errorf("Write channel closed, exiting writer loop")
+	return fmt.Errorf("write channel closed, exiting writer loop")
 }
 
 func (tunnel *WsTunnel) WriteToTunnel(target common.IpAddress, packet []byte) error {
@@ -197,7 +159,7 @@ func (tunnel *WsTunnel) WriteToTunnel(target common.IpAddress, packet []byte) er
 		}
 		tunnel.logger.Debug(fmt.Sprintf("Server interface got package:\n%s", hex.Dump(packet)))
 	} else {
-		return fmt.Errorf("Unknown target %s", target.String())
+		return fmt.Errorf("unknown target %s", target.String())
 	}
 
 	return nil

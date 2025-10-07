@@ -23,7 +23,7 @@ func CreateInterface(name string) (Interface, error) {
 		PlatformSpecificParams: parameters,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create address to interface: %w", err)
+		return nil, fmt.Errorf("failed to create address to interface: %w", err)
 	}
 
 	return ifce, nil
@@ -33,7 +33,7 @@ func SetupInterface(iface Interface, address string, mtu uint) error {
 
 	err := exec.Command("ip", "addr", "add", address, "dev", iface.Name()).Run()
 	if err != nil {
-		return fmt.Errorf("Failed to add address to interface %s: %w", iface.Name(), err)
+		return fmt.Errorf("failed to add address to interface %s: %w", iface.Name(), err)
 	}
 
 	err = exec.Command("ip", "link", "set", "dev", iface.Name(), "mtu", fmt.Sprintf("%d", mtu)).Run()
@@ -43,7 +43,7 @@ func SetupInterface(iface Interface, address string, mtu uint) error {
 
 	err = exec.Command("ip", "link", "set", "dev", iface.Name(), "up").Run()
 	if err != nil {
-		return fmt.Errorf("Failed to add address to interface %s: %w", iface.Name(), err)
+		return fmt.Errorf("failed to add address to interface %s: %w", iface.Name(), err)
 	}
 
 	return nil

@@ -80,7 +80,7 @@ func (client *Client) ConnectToRemote() error {
 	var err error
 
 	if client.isConnectedToRemote {
-		return fmt.Errorf("Already connected to remote WebSocket")
+		return fmt.Errorf("already connected to remote web-socket")
 	}
 
 	header := make(http.Header)
@@ -89,7 +89,7 @@ func (client *Client) ConnectToRemote() error {
 
 	client.wsTunnel, _, err = websocket.DefaultDialer.Dial(client.remoteWebSocketURL, header)
 	if err != nil {
-		return fmt.Errorf("WebSocket connection error: %w", err)
+		return fmt.Errorf("web-socket connection error: %w", err)
 	}
 
 	client.logger.Info(fmt.Sprintf("WebSocket connected to remore: %s", client.remoteWebSocketURL))
@@ -103,12 +103,12 @@ func (client *Client) Init() error {
 	client.logger.Info("Setup interface...")
 	client.localInterface, err = common.CreateInterface(client.interfaceName)
 	if err != nil {
-		return fmt.Errorf("Interface creation error: %w", err)
+		return fmt.Errorf("interface creation error: %w", err)
 	}
 
 	err = common.SetupInterface(client.localInterface, client.interfaceAddress, client.mtu)
 	if err != nil {
-		return fmt.Errorf("Interface setup error: %w", err)
+		return fmt.Errorf("interface setup error: %w", err)
 	}
 
 	client.isInited = true
@@ -177,7 +177,7 @@ func (client *Client) closeWebSocketConnection() error {
 
 	err := client.wsTunnel.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	if err != nil {
-		return fmt.Errorf("WebSocket error sending close messager: %w", err)
+		return fmt.Errorf("web-socket error sending close messager: %w", err)
 	}
 
 	return nil

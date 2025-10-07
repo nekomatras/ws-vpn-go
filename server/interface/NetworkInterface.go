@@ -37,12 +37,12 @@ func (netInterface *NetworkInterface) Init() error {
 	netInterface.logger.Info("Setup interface...")
 	netInterface.localInterface, err = common.CreateInterface(netInterface.name)
 	if err != nil {
-		return fmt.Errorf("Interface creation error: %w", err)
+		return fmt.Errorf("interface creation error: %w", err)
 	}
 
 	err = common.SetupInterface(netInterface.localInterface, netInterface.address, netInterface.mtu)
 	if err != nil {
-		return fmt.Errorf("Interface setup error: %w", err)
+		return fmt.Errorf("interface setup error: %w", err)
 	}
 
 	netInterface.logger.Info(fmt.Sprintf("Create VPN interface %s", netInterface.name))

@@ -36,13 +36,13 @@ func main() {
 		logger := common.GetLoggerWithName(baseLogger, "Client")
 
 		client := client.New(config.RemoteUrl, logger)
-		client.SetInterfaceAddress(config.InterfaceAddress)
+		//client.SetInterfaceAddress(config.InterfaceAddress)
 		client.SetInterfaceName(config.InterfaceName)
 		client.SetKey(config.Key)
-		error := client.Init()
+		err := client.Init()
 
 		if !client.IsInited() {
-			logger.Error(error.Error())
+			logger.Error(err.Error())
 			os.Exit(-1)
 		}
 
@@ -63,17 +63,22 @@ func main() {
 
 		logger := common.GetLoggerWithName(baseLogger, "Server")
 
-		server := server.New(
-			config.InterfaceAddress,
+		server, err := server.New(
+			config.Network,
 			config.InterfaceName,
 			config.MTU,
 			config.RemoteUrl,
 			config.Key,
 			logger)
 
-		error := server.Start()
-		if error != nil {
-			logger.Error(error.Error())
+		if err != nil {
+			logger.Error(err.Error())
+			os.Exit(-1)
+		}
+
+		err = server.Start()
+		if err != nil {
+			logger.Error(err.Error())
 			os.Exit(-1)
 		}
 

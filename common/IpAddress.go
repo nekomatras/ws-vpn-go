@@ -38,13 +38,13 @@ func GetAllZeroIp() IpAddress {
 func GetIpFromPacket(packet []byte) (IpAddress, IpAddress, error) {
 
 	if len(packet) < 20 { // минимальный размер IPv4 заголовка
-		return IpAddress{}, IpAddress{}, fmt.Errorf("Package length < 20")
+		return IpAddress{}, IpAddress{}, fmt.Errorf("package length < 20")
 	}
 
 	// IPv4
 	ipHeaderLen := int(packet[0]&0x0F) * 4 // размер заголовка в байтах
 	if len(packet) < ipHeaderLen {
-		return IpAddress{}, IpAddress{}, fmt.Errorf("Package length < ipHeaderLen")
+		return IpAddress{}, IpAddress{}, fmt.Errorf("package length < ipHeaderLen")
 	}
 
 	// Адрес назначения: байты 16-19
