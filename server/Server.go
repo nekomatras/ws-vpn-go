@@ -92,7 +92,6 @@ func (server *Server) Start() error {
 	return nil
 }
 
-//TODO: добавить проверку на повторные вызовы от одного клиента
 func (server *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
 	if common.CheckKey(r, server.key) {
 

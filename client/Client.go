@@ -42,6 +42,22 @@ func New(wsUrl string, logger *slog.Logger) *Client {
 		logger: logger}
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 func (client *Client) SetKey(key string) {
 	client.key = key
 }
