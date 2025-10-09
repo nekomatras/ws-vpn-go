@@ -6,9 +6,9 @@ import (
 	"net/http"
 
 	"ws-vpn-go/common"
-	"ws-vpn-go/server/interface"
+	"ws-vpn-go/common/tunnel"
+	"ws-vpn-go/common/interface"
 	"ws-vpn-go/server/networkmanager"
-	"ws-vpn-go/server/tunnel"
 	"ws-vpn-go/server/tunnel/wstunnel"
 )
 
@@ -83,7 +83,7 @@ func (server *Server) Start() error {
 	server.tunnel.RegisterHandlers(serverMux)
 	server.tunnel.SetConnectionCloseHandler(server.netManager.FreeAddress)
 
-	go server.tunnel.Listen()
+	server.tunnel.Run()
 	go http.ListenAndServe(server.listenAddress, serverMux) //TODO
 
 	go server.tunnel.WriteTo(*server.netInterface.Interface())

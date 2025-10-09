@@ -1,200 +1,115 @@
 package client
 
 import (
-	"encoding/hex"
-	"errors"
 	"fmt"
+	"time"
 	"log/slog"
 	"net/http"
-	"os"
-	"ws-vpn-go/common"
+	"encoding/json"
 
-	"github.com/gorilla/websocket"
+	"ws-vpn-go/common"
+	"ws-vpn-go/common/tunnel"
+	"ws-vpn-go/common/interface"
+	"ws-vpn-go/client/tunnel/wstunnel"
 )
 
 const DefaultMTU = 1500
 
 type Client struct {
-	remoteWebSocketURL string
 
-	interfaceName    string
-	interfaceAddress string
+	netInterface *netinterface.NetworkInterface
+	tunnel       tunnel.Tunnel
 
 	key string
+	interfaceName string
 
-	mtu                 uint
-	isInited            bool
-	isConnectedToRemote bool
+	remoteAddress string
+	tunnelPath string
+	registerPath string
 
-	localInterface common.Interface
-	wsTunnel       common.Tunnel
+	ipAddress common.IpAddress
+	mtu uint
 
 	logger         *slog.Logger
 }
 
-func New(wsUrl string, logger *slog.Logger) *Client {
-	logger.Info(fmt.Sprintf("Create client: Target URL: \"%s\"; MTU: %d", wsUrl, DefaultMTU))
+func New(remoteAddress string, tunnelPath string, registerPath string, key string, interfaceName string, logger *slog.Logger) *Client {
+	logger.Info(fmt.Sprintf("Create client: Target URL: \"%s\"", remoteAddress + tunnelPath))
 	return &Client{
-		remoteWebSocketURL:  wsUrl,
-		mtu:                 DefaultMTU,
-		isInited:            false,
-		isConnectedToRemote: false,
+		remoteAddress: remoteAddress,
+		tunnelPath: tunnelPath,
+		registerPath: registerPath,
+		tunnel: wstunnel.New(remoteAddress, tunnelPath, key, logger),
+		key: key,
 		logger: logger}
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-func (client *Client) SetKey(key string) {
-	client.key = key
-}
-
-func (client *Client) RemoteWebSocketURL() string {
-	return client.remoteWebSocketURL
-}
-
-func (client *Client) InterfaceName() string {
-	return client.interfaceName
-}
-
-func (client *Client) MTU() uint {
-	return client.mtu
-}
-
-func (client *Client) IsInited() bool {
-	return client.isInited
-}
-
-func (client *Client) IsConnectedToRemote() bool {
-	return client.isConnectedToRemote
-}
-
-func (client *Client) SetInterfaceName(interfaceName string) {
-	client.logger.Info(fmt.Sprintf("Set interface name: %s", interfaceName))
-	client.interfaceName = interfaceName
-}
-
-func (client *Client) SetInterfaceAddress(interfaceAddress string) {
-	client.logger.Info(fmt.Sprintf("Set interface address: %s", interfaceAddress))
-	client.interfaceAddress = interfaceAddress
-}
-
-func (client *Client) ConnectToRemote() error {
+func (client *Client) Start() error {
 	var err error
 
-	if client.isConnectedToRemote {
-		return fmt.Errorf("already connected to remote web-socket")
-	}
-
-	header := make(http.Header)
-	header.Add("ClientIP", client.interfaceAddress)
-	header.Add("Key", client.key)
-
-	client.wsTunnel, _, err = websocket.DefaultDialer.Dial(client.remoteWebSocketURL, header)
+	info, err := client.register()
 	if err != nil {
-		return fmt.Errorf("web-socket connection error: %w", err)
+		client.logger.Error(fmt.Sprintf("Unable to get informantion from server: %v", err))
+		return err
 	}
 
-	client.logger.Info(fmt.Sprintf("WebSocket connected to remore: %s", client.remoteWebSocketURL))
-	client.isConnectedToRemote = true
+	client.ipAddress = common.GetIpFromString(info.ClientIp)
+	client.mtu = info.MTU
+
+
+
+	client.netInterface = netinterface.New(client.ipAddress.String(), client.interfaceName, client.mtu, client.logger)
+	err = client.netInterface.Init()
+	if err != nil {
+		client.logger.Error(fmt.Sprintf("Unable to setup interface: %v", err))
+		return err
+	}
+
+	err = client.tunnel.ReserveConnection(client.ipAddress)
+	if err != nil {
+		return err
+	}
+
+	err = client.tunnel.Run()
+	if err != nil {
+		return err
+	}
+
+	go client.tunnel.WriteTo(*client.netInterface.Interface())
+	go client.netInterface.WriteTo(client.tunnel.WriteToTunnel)
 
 	return nil
 }
 
-func (client *Client) Init() error {
-	var err error
-	client.logger.Info("Setup interface...")
-	client.localInterface, err = common.CreateInterface(client.interfaceName)
-	if err != nil {
-		return fmt.Errorf("interface creation error: %w", err)
-	}
-
-	err = common.SetupInterface(client.localInterface, client.interfaceAddress, client.mtu)
-	if err != nil {
-		return fmt.Errorf("interface setup error: %w", err)
-	}
-
-	client.isInited = true
-	client.logger.Info(fmt.Sprintf("Create VPN interface %s", client.interfaceName))
-
-	return nil
-}
-
-func (client *Client) Run() error {
-
-	if !client.isInited {
-		return errors.New("Client must be initialized")
-	}
-
-	if !client.isConnectedToRemote {
-		return errors.New("Client must be connected to remote")
-	}
-
-	go client.inretfaceLoop()
-	go client.tunelLoop()
-
-	return nil
-}
-
-func (client *Client) inretfaceLoop() {
-
-	buf := make([]byte, client.mtu)
-
-	for {
-
-		n, err := client.localInterface.Read(buf)
-		if err != nil {
-			client.logger.Error(fmt.Sprintf("Interface read error: %v", err))
-			os.Exit(-1)
+func (client *Client) register() (common.ServerInfo, error) {
+	{
+		httpClient := http.Client{
+			Timeout: 5 * time.Second, // таймаут на всякий случай
 		}
 
-		client.logger.Debug(fmt.Sprintf("Client interface got package:\n%s", hex.Dump(buf[:n])))
-
-		err = client.wsTunnel.WriteMessage(websocket.BinaryMessage, buf[:n])
+		req, err := http.NewRequest("GET", client.remoteAddress + client.registerPath, nil)
 		if err != nil {
-			client.logger.Error(fmt.Sprintf("WebSocket write error: %v", err))
-			os.Exit(-1)
-		}
-	}
-}
-
-func (client *Client) tunelLoop() {
-
-	for {
-		_, message, err := client.wsTunnel.ReadMessage()
-		if err != nil {
-			client.logger.Error(fmt.Sprintf("WebSocket read error: %v", err))
-			os.Exit(-1)
+			return common.ServerInfo{}, fmt.Errorf("cannot create request: %w", err)
 		}
 
-		_, err = client.localInterface.Write(message)
+		req.Header.Set("Key", client.key)
+
+		resp, err := httpClient.Do(req)
 		if err != nil {
-			client.logger.Error(fmt.Sprintf("Interface write error: %v", err))
-			os.Exit(-1)
+			return common.ServerInfo{}, fmt.Errorf("cannot make request: %w", err)
 		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return common.ServerInfo{}, fmt.Errorf("server returned status: %s", resp.Status)
+		}
+
+		var info common.ServerInfo
+		if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			return common.ServerInfo{}, fmt.Errorf("cannot decode response: %w", err)
+		}
+
+		return info, nil
 	}
-
-}
-
-func (client *Client) closeWebSocketConnection() error {
-
-	err := client.wsTunnel.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	if err != nil {
-		return fmt.Errorf("web-socket error sending close messager: %w", err)
-	}
-
-	return nil
 }

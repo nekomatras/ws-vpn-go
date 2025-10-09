@@ -12,8 +12,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type Tunel = *websocket.Conn
-
 type WsTunnel struct {
 
 	serverInfo common.ServerInfo
@@ -149,7 +147,7 @@ func (tunnel *WsTunnel) writeToChannel(data []byte) {
 	}
 }
 
-func (tunnel *WsTunnel) Listen() error {
+func (tunnel *WsTunnel) Run() error {
 	return nil
 }
 

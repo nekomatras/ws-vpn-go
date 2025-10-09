@@ -7,7 +7,7 @@ import (
 )
 
 type Tunnel interface {
-	Listen() error                                              //Открываем тунель
+	Run() error                                                 //Открываем тунель
 	RegisterHandlers(mux *http.ServeMux) error                  //Вехаем хендлеры, необходимые для тунеля
 	ReserveConnection(ip common.IpAddress) error                //Даем тунелю знать, что сервер выдал IP
 	SetConnectionCloseHandler(handler func (common.IpAddress))  //Вызываем, чтобы отчистить выданный адрес, когда клиент отваливается

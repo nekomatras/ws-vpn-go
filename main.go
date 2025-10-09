@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
 	"ws-vpn-go/client"
 	"ws-vpn-go/common"
 	"ws-vpn-go/server"
@@ -27,36 +26,24 @@ func main() {
 		os.Exit(-1)
 	}
 
-	TimeToWait := 5 * time.Second
 
-	fmt.Println(*config)
 
 	if config.Mode == "client" {
 
 		logger := common.GetLoggerWithName(baseLogger, "Client")
 
-		client := client.New(config.RemoteUrl, logger)
-		//client.SetInterfaceAddress(config.InterfaceAddress)
-		client.SetInterfaceName(config.InterfaceName)
-		client.SetKey(config.Key)
-		err := client.Init()
+		client := client.New(
+			config.RemoteAddress,
+			config.TunnelPath,
+			config.RegisterPath,
+			config.Key,
+			config.InterfaceName,
+			logger)
 
-		if !client.IsInited() {
+		err := client.Start()
+		if err != nil {
 			logger.Error(err.Error())
 			os.Exit(-1)
-		}
-
-		for {
-
-			client.ConnectToRemote()
-
-			if client.IsConnectedToRemote() {
-				client.Run()
-				break
-			}
-
-			logger.Warn(fmt.Sprintf("Unable to connect remote WS, wait %s and retry...", TimeToWait))
-			time.Sleep(TimeToWait)
 		}
 
 	} else if config.Mode == "server" {
