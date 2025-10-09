@@ -11,6 +11,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const Repeat = 5
+
 type WsTunnel struct {
 	remoteURL string
 	key string
@@ -31,18 +33,7 @@ func New(remoteAddress string, tunnelPath string, key string, logger *slog.Logge
 }
 
 func (tunnel *WsTunnel) Run() error {
-	var err error
-
-	header := make(http.Header)
-	header.Add("Key", tunnel.key)
-	header.Add("ClientIP", tunnel.clientIp.String())
-
-	tunnel.wsTunnel, _, err = websocket.DefaultDialer.Dial(tunnel.remoteURL, header)
-	if err != nil {
-		return fmt.Errorf("web-socket connection error: %w", err)
-	}
-
-	return nil
+	return tunnel.tryConnectToRemote()
 }
 
 func (tunnel *WsTunnel) WriteTo(target io.Writer) error {
@@ -50,6 +41,10 @@ func (tunnel *WsTunnel) WriteTo(target io.Writer) error {
 		_, message, err := tunnel.wsTunnel.ReadMessage()
 		if err != nil {
 			tunnel.logger.Error(fmt.Sprintf("WebSocket read error: %v", err))
+			reconnectErr := tunnel.tryConnectToRemote()
+			if reconnectErr != nil {
+				return reconnectErr
+			}
 			continue
 		}
 
@@ -64,8 +59,17 @@ func (tunnel *WsTunnel) WriteTo(target io.Writer) error {
 }
 
 func (tunnel *WsTunnel) WriteToTunnel(_ common.IpAddress, packet []byte) error {
-	err := tunnel.wsTunnel.WriteMessage(websocket.BinaryMessage, packet)
+	var err error
+
+	err = tunnel.wsTunnel.WriteMessage(websocket.BinaryMessage, packet)
 		if err != nil {
+			reconnectErr := tunnel.tryConnectToRemote()
+			if reconnectErr == nil {
+				err = tunnel.wsTunnel.WriteMessage(websocket.BinaryMessage, packet)
+				if err == nil {
+					return nil
+				}
+			}
 			return fmt.Errorf("web-socket write error: %v", err)
 		}
 
@@ -92,4 +96,26 @@ func (tunnel *WsTunnel) ReserveConnection(ip common.IpAddress) error {
 func (tunnel *WsTunnel) SetConnectionCloseHandler(handler func (common.IpAddress)) {
 	errMsg := "method SetConnectionCloseHandler not implemented"
 	tunnel.logger.Error("Not implementod method called: " + errMsg)
+}
+
+func (tunnel *WsTunnel) tryConnectToRemote() error {
+	var err error
+	repeat := Repeat
+
+	header := make(http.Header)
+	header.Add("Key", tunnel.key)
+	header.Add("ClientIP", tunnel.clientIp.String())
+
+	for repeat != 0 {
+		tunnel.wsTunnel, _, err = websocket.DefaultDialer.Dial(tunnel.remoteURL, header)
+		if err == nil {
+			return nil
+		}
+
+		repeat--
+		err = fmt.Errorf("web-socket connection error: %w", err)
+		tunnel.logger.Warn(fmt.Sprintf("Unadle to connect tunnel: %v; Repeat: %d", err, repeat))
+	}
+
+	return err
 }

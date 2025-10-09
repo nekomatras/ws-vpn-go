@@ -6,25 +6,26 @@ import (
 	"net/http"
 
 	"ws-vpn-go/common"
+	netinterface "ws-vpn-go/common/interface"
 	"ws-vpn-go/common/tunnel"
-	"ws-vpn-go/common/interface"
+	"ws-vpn-go/server/contentmanager"
 	"ws-vpn-go/server/networkmanager"
 	"ws-vpn-go/server/tunnel/wstunnel"
 )
 
-const DefaultMTU = 1500
-
 type Server struct {
-	key          string
-	serverInfo   common.ServerInfo
+	key        string
+	serverInfo common.ServerInfo
 
 	listenAddress string
-	registerPath string
+	registerPath  string
 
-	netInterface *netinterface.NetworkInterface
-	tunnel       tunnel.Tunnel
-	netManager   *networkmanager.Networkmanager
-	logger       *slog.Logger
+	netInterface   *netinterface.NetworkInterface
+	tunnel         tunnel.Tunnel
+	netManager     *networkmanager.Networkmanager
+	contentManager *contentmanager.ContentManager
+
+	logger *slog.Logger
 }
 
 func New(
@@ -35,12 +36,19 @@ func New(
 	registerPath string,
 	tunnelPath string,
 	key string,
+	pagePath string,
+	staticPath string,
 	logger *slog.Logger) (*Server, error) {
 	var err error
 
 	logger.Info(fmt.Sprintf("Create server: WebSocket URL: \"%s%s\"; MTU: %d", listenAddress, tunnelPath, mtu))
 
 	networkManager, err := networkmanager.New(network)
+	if err != nil {
+		return nil, err
+	}
+
+	contentManager, err := contentmanager.New(pagePath, staticPath)
 	if err != nil {
 		return nil, err
 	}
@@ -56,12 +64,13 @@ func New(
 	}
 
 	server := &Server{
-		netInterface: netinterface.New(address.String(), interfaceName, mtu, logger),
-		tunnel:       wstunnel.New(tunnelPath, key, info, logger),
-		netManager:   networkManager,
-		logger:       logger,
-		key:          key,
-		serverInfo:   info,
+		netInterface:   netinterface.New(address.String(), interfaceName, mtu, logger),
+		tunnel:         wstunnel.New(tunnelPath, key, info, logger),
+		netManager:     networkManager,
+		contentManager: contentManager,
+		logger:         logger,
+		key:            key,
+		serverInfo:     info,
 	}
 
 	return server, nil
@@ -77,14 +86,15 @@ func (server *Server) Start() error {
 
 	serverMux := http.NewServeMux()
 
-	serverMux.HandleFunc(server.registerPath, server.registerHandler) //раскидать по отдельным классам
-	serverMux.HandleFunc("/", server.defaultHandler)
+	serverMux.HandleFunc(server.registerPath, server.registerHandler)
+
+	server.contentManager.RegisterHandlers(serverMux)
 
 	server.tunnel.RegisterHandlers(serverMux)
 	server.tunnel.SetConnectionCloseHandler(server.netManager.FreeAddress)
 
 	server.tunnel.Run()
-	go http.ListenAndServe(server.listenAddress, serverMux) //TODO
+	go http.ListenAndServe(server.listenAddress, serverMux)
 
 	go server.tunnel.WriteTo(*server.netInterface.Interface())
 	go server.netInterface.WriteTo(server.tunnel.WriteToTunnel)
@@ -98,7 +108,7 @@ func (server *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
 		macString := r.Header.Get("MAC")
 		mac := common.GetMacFromString(macString)
 		if mac == common.GetAllZeroMac() {
-			server.defaultHandler(w, r)
+			server.contentManager.WriteContentToResponse(w)
 		}
 
 		clientIp, ok := server.netManager.GetAddress(mac)
@@ -120,11 +130,6 @@ func (server *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
 		clientInfo.WriteToResponse(w)
 		w.WriteHeader(http.StatusAccepted)
 	} else {
-		server.defaultHandler(w, r)
+		server.contentManager.WriteContentToResponse(w)
 	}
-}
-
-func (tunnel *Server) defaultHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "САДОВОД-ЛЮБИТЕЛЬ")
-	w.WriteHeader(http.StatusOK)
 }

@@ -1,54 +1,53 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
-	"time"
 	"log/slog"
 	"net/http"
-	"encoding/json"
+	"time"
 
-	"ws-vpn-go/common"
-	"ws-vpn-go/common/tunnel"
-	"ws-vpn-go/common/interface"
 	"ws-vpn-go/client/tunnel/wstunnel"
+	"ws-vpn-go/common"
+	"ws-vpn-go/common/interface"
+	"ws-vpn-go/common/tunnel"
 )
 
-const DefaultMTU = 1500
+const Timeout = 5 * time.Second
+const Repeat = 5
 
 type Client struct {
-
 	netInterface *netinterface.NetworkInterface
 	tunnel       tunnel.Tunnel
 
-	key string
+	key           string
 	interfaceName string
 
 	remoteAddress string
-	tunnelPath string
-	registerPath string
+	tunnelPath    string
+	registerPath  string
 
 	ipAddress common.IpAddress
-	mtu uint
+	mtu       uint
 
-	logger         *slog.Logger
+	logger *slog.Logger
 }
 
 func New(remoteAddress string, tunnelPath string, registerPath string, key string, interfaceName string, logger *slog.Logger) *Client {
-	logger.Info(fmt.Sprintf("Create client: Target URL: \"%s\"", remoteAddress + tunnelPath))
+	logger.Info(fmt.Sprintf("Create client: Target URL: \"%s\"", remoteAddress+tunnelPath))
 	return &Client{
 		remoteAddress: remoteAddress,
-		tunnelPath: tunnelPath,
-		registerPath: registerPath,
-		tunnel: wstunnel.New(remoteAddress, tunnelPath, key, logger),
-		key: key,
-		logger: logger}
+		tunnelPath:    tunnelPath,
+		registerPath:  registerPath,
+		tunnel:        wstunnel.New(remoteAddress, tunnelPath, key, logger),
+		key:           key,
+		logger:        logger}
 }
-
 
 func (client *Client) Start() error {
 	var err error
 
-	info, err := client.register()
+	info, err := client.tryRegister()
 	if err != nil {
 		client.logger.Error(fmt.Sprintf("Unable to get informantion from server: %v", err))
 		return err
@@ -56,8 +55,6 @@ func (client *Client) Start() error {
 
 	client.ipAddress = common.GetIpFromString(info.ClientIp)
 	client.mtu = info.MTU
-
-
 
 	client.netInterface = netinterface.New(client.ipAddress.String(), client.interfaceName, client.mtu, client.logger)
 	err = client.netInterface.Init()
@@ -71,7 +68,7 @@ func (client *Client) Start() error {
 		return err
 	}
 
-	err = client.tunnel.Run()
+	err = client.tryRunTunnel()
 	if err != nil {
 		return err
 	}
@@ -82,13 +79,49 @@ func (client *Client) Start() error {
 	return nil
 }
 
+func (client *Client) tryRunTunnel() error {
+	var err error
+	repeat := Repeat
+
+	for repeat != 0 {
+		err = client.tunnel.Run()
+		if err == nil {
+			return nil
+		}
+
+		repeat--
+		client.logger.Warn(fmt.Sprintf("Unable to connect tunnel: %v; Retry %d times", err, repeat))
+	}
+
+	return err
+}
+
+func (client *Client) tryRegister() (common.ServerInfo, error) {
+	var err error
+	repeat := Repeat
+
+	info := common.ServerInfo{}
+
+	for repeat != 0 {
+		info, err = client.register()
+		if err == nil {
+			return info, err
+		}
+
+		repeat--
+		client.logger.Warn(fmt.Sprintf("Unable to get server data: %v; Retry %d times", err, repeat))
+	}
+
+	return info, err
+}
+
 func (client *Client) register() (common.ServerInfo, error) {
 	{
 		httpClient := http.Client{
-			Timeout: 5 * time.Second, // таймаут на всякий случай
+			Timeout: Timeout,
 		}
 
-		req, err := http.NewRequest("GET", client.remoteAddress + client.registerPath, nil)
+		req, err := http.NewRequest("GET", client.remoteAddress+client.registerPath, nil)
 		if err != nil {
 			return common.ServerInfo{}, fmt.Errorf("cannot create request: %w", err)
 		}

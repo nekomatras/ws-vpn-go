@@ -58,6 +58,8 @@ func main() {
 			config.RegisterPath,
 			config.TunnelPath,
 			config.Key,
+			config.DefaultPagePath,
+			config.StaticFolderPath,
 			logger)
 
 		if err != nil {
