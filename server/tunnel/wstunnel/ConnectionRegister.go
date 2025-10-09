@@ -42,3 +42,17 @@ func (register *ConnectionRegister) Get(key common.IpAddress) (*websocket.Conn, 
 	tun, res := register.register[key]
 	return tun, res
 }
+
+func (register *ConnectionRegister) Update(key common.IpAddress, value *websocket.Conn) bool {
+	register.mutex.Lock()
+	defer register.mutex.Unlock()
+	_, res := register.register[key]
+
+	if !res {
+		return false
+	}
+
+	register.register[key] = value
+
+	return true
+}

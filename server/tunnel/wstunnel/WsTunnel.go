@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"encoding/hex"
 
 	"ws-vpn-go/common"
@@ -19,23 +18,22 @@ type WsTunnel struct {
 
 	serverInfo common.ServerInfo
 
-	localWebSocketURL string
-	key string
+	tunnelPath               string
+	key                      string
 
-	wsTunnel       Tunel
-	upgrader websocket.Upgrader
+	upgrader                 websocket.Upgrader
 
-	tunnelError error
-
-	receivedPackageCh       chan []byte
+	receivedPackageCh        chan []byte
 	clinetConnectionRegister ConnectionRegister
 
-	logger *slog.Logger
+	closeConnectionHandler   func(common.IpAddress)
+
+	logger                   *slog.Logger
 }
 
-func New(wsUrl string, key string, serverInfo common.ServerInfo, logger *slog.Logger) *WsTunnel {
+func New(tunnelPath string, key string, serverInfo common.ServerInfo, logger *slog.Logger) *WsTunnel {
 	tunnel := &WsTunnel{
-		localWebSocketURL:        wsUrl,
+		tunnelPath:               tunnelPath,
 		key:                      key,
 		serverInfo:               serverInfo,
 		receivedPackageCh:        make(chan []byte, 256),
@@ -48,6 +46,11 @@ func New(wsUrl string, key string, serverInfo common.ServerInfo, logger *slog.Lo
 	}
 	tunnel.upgrader = upgrader
 
+	tunnel.closeConnectionHandler = func (ip common.IpAddress)  {
+		tunnel.logger.Error(
+			fmt.Sprintf("Use default connection close handler for ip %s", ip.String()))
+	}
+
 	return tunnel
 }
 
@@ -55,6 +58,12 @@ func (tunnel *WsTunnel) checkClientAddress(request *http.Request) bool {
 	clientAddress := request.Header.Get("ClientIP")
 	ip := common.GetIpFromString(clientAddress)
 	return !tunnel.clinetConnectionRegister.Contains(ip)
+}
+
+//TODO: добавить освобождение адреса на сервере
+func (tunnel *WsTunnel) handleConnectionClosed(clientIp common.IpAddress) {
+	tunnel.clinetConnectionRegister.Remove(clientIp)
+	tunnel.closeConnectionHandler(clientIp)
 }
 
 func (tunnel *WsTunnel) connectionHandler(w http.ResponseWriter, r *http.Request) {
@@ -75,8 +84,12 @@ func (tunnel *WsTunnel) connectionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	tunnel.clinetConnectionRegister.Add(clientIP, ws)
-	defer tunnel.clinetConnectionRegister.Remove(clientIP)
+	if !tunnel.clinetConnectionRegister.Update(clientIP, ws) {
+		tunnel.logger.Warn(fmt.Sprintf("Unable to setup connection from [%s]: client ip [%s] is not registered", sourceIp, clientIP))
+		return
+	}
+
+	defer tunnel.handleConnectionClosed(clientIP)
 
 	tunnel.logger.Info(fmt.Sprintf("Client %s connected from %s", clientIP.String(), sourceIp))
 
@@ -111,12 +124,20 @@ func (tunnel *WsTunnel) checkBeforeUpgrade(request *http.Request) bool {
 }
 
 func (tunnel *WsTunnel) RegisterHandlers(mux *http.ServeMux) error {
-	u, err := url.Parse(tunnel.localWebSocketURL)
-	if err != nil {
-		return fmt.Errorf("unable to parse web-socket url: %w", err)
+	mux.HandleFunc(tunnel.tunnelPath, tunnel.connectionHandler)
+	return nil
+}
+
+func (tunnel *WsTunnel) SetConnectionCloseHandler(handler func (common.IpAddress)) {
+	tunnel.closeConnectionHandler = handler
+}
+
+func (tunnel *WsTunnel) ReserveConnection(ip common.IpAddress) error {
+	if (tunnel.clinetConnectionRegister.Contains(ip)) {
+		return fmt.Errorf("connection for [%s] already exist", ip.String())
 	}
 
-	mux.HandleFunc(u.Path, tunnel.connectionHandler)
+	tunnel.clinetConnectionRegister.Add(ip, nil)
 	return nil
 }
 
@@ -153,6 +174,11 @@ func (tunnel *WsTunnel) WriteToTunnel(target common.IpAddress, packet []byte) er
 	client, ok := tunnel.clinetConnectionRegister.Get(target)
 
 	if ok {
+
+		if client == nil {
+			return fmt.Errorf("addres [%s] registered, but connection is not exist", target.String())
+		}
+
 		err := client.WriteMessage(websocket.BinaryMessage, packet)
 		if err != nil {
 			return err

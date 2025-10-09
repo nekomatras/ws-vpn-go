@@ -7,13 +7,16 @@ import (
 )
 
 type Config struct {
-	Mode             string `json:"mode"`
-	RemoteUrl        string `json:"remote_url"`
-	InterfaceName    string `json:"interface_name"`
-	//InterfaceAddress string `json:"interface_address"`
-	Key              string `json:"key"`
-	MTU                uint `json:"mtu"`
-	Network          string `json:"network"`
+	Mode             string `json:"mode"`            //Common
+	RemoteAddress    string `json:"remote_address"`  //Client
+	ListenAddress    string `json:"listen_address"`  //Server
+	RegisterPath     string `json:"register_path"`   //Common
+	TunnelType       string `json:"tunnel_type"`     //Common???
+	TunnelPath       string `json:"tunnel_path"`     //Common
+	InterfaceName    string `json:"interface_name"`  //Common
+	Key              string `json:"key"`             //Common
+	MTU                uint `json:"mtu"`             //Server
+	Network          string `json:"network"`         //Server
 }
 
 func LoadConfig(path string) (*Config, error) {

@@ -8,6 +8,8 @@ import (
 type ServerInfo struct {
 	MTU                   uint
 	InternalServerAddress string
+
+	ClientIp              string
 }
 
 func (info ServerInfo) WriteToResponse(w http.ResponseWriter) {

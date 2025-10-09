@@ -67,7 +67,9 @@ func main() {
 			config.Network,
 			config.InterfaceName,
 			config.MTU,
-			config.RemoteUrl,
+			config.ListenAddress,
+			config.RegisterPath,
+			config.TunnelPath,
 			config.Key,
 			logger)
 
