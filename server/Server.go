@@ -68,6 +68,7 @@ func New(
 		tunnel:         wstunnel.New(tunnelPath, key, info, logger),
 		netManager:     networkManager,
 		contentManager: contentManager,
+		registerPath:   registerPath,
 		logger:         logger,
 		key:            key,
 		serverInfo:     info,

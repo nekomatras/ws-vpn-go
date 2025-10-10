@@ -20,13 +20,14 @@ func main() {
 
 	baseLogger := common.NewLogger(os.Stdout, slog.LevelDebug)
 
-	config, err := common.LoadConfig(*configFile)
+	configPtr, err := common.LoadConfig(*configFile)
 	if (err != nil) {
 		baseLogger.Error(err.Error())
 		os.Exit(-1)
 	}
+	config := *configPtr
 
-
+	baseLogger.Info(fmt.Sprintf("Start with config [%s]:\n%+v", *configFile, config))
 
 	if config.Mode == "client" {
 
