@@ -1,11 +1,12 @@
 package wstunnel
 
 import (
-	"io"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
-	"encoding/hex"
+	"time"
 
 	"ws-vpn-go/common"
 
@@ -66,7 +67,7 @@ func (tunnel *WsTunnel) handleConnectionClosed(clientIp common.IpAddress) {
 
 func (tunnel *WsTunnel) connectionHandler(w http.ResponseWriter, r *http.Request) {
 
-	sourceIp := r.RemoteAddr
+	sourceIp := common.GetRealIP(r)
 
 	ws, err := tunnel.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -110,7 +111,7 @@ func (tunnel *WsTunnel) connectionHandler(w http.ResponseWriter, r *http.Request
 
 func (tunnel *WsTunnel) checkBeforeUpgrade(request *http.Request) bool {
 	if common.CheckKey(request, tunnel.key) && tunnel.checkClientAddress(request) {
-		tunnel.logger.Info(fmt.Sprintf("Try to open WS connection from: %s", request.RemoteAddr))
+		tunnel.logger.Info(fmt.Sprintf("Try to open WS connection from: %s", common.GetRealIP(request)))
 		return true
 	} else {
 		tunnel.logger.Warn(fmt.Sprintf("Try to open WS connection with wrong key [%s] or address [%s]; Connection form: %s",
@@ -142,7 +143,7 @@ func (tunnel *WsTunnel) ReserveConnection(ip common.IpAddress) error {
 func (tunnel *WsTunnel) writeToChannel(data []byte) {
 	select {
 	case tunnel.receivedPackageCh <- data:
-	default:
+	case <-time.After(1 * time.Second):
 		tunnel.logger.Error("[IF] Write channel full, dropping packet")
 	}
 }

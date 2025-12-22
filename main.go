@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"ws-vpn-go/client"
 	"ws-vpn-go/common"
@@ -38,49 +37,45 @@ func main() {
 		os.Exit(1)
 	}
 
-	baseLogger := common.NewLogger(os.Stdout, slog.LevelDebug)
-
 	if *configMode == *envieronmentMode {
-        baseLogger.Error("Unable to start. You should specify configuration mode: --env or --config")
+        fmt.Println("Unable to start. You should specify configuration mode: --env or --config")
         os.Exit(1)
     }
 
-	var configPtr *common.Config;
+	var config *common.Config;
 	var configErr error;
 	var configType string;
 
 	if *configMode {
-		configPtr, configErr = common.LoadConfigFromFile(*configFile)
+		config, configErr = common.LoadConfigFromFile(*configFile)
 		configType = *configFile
 	} else if *envieronmentMode {
-		configPtr, configErr = common.LoadConfigFromEnvieronment()
+		config, configErr = common.LoadConfigFromEnvieronment()
 		configType = "Envieronment Variables"
 	} else {
-		baseLogger.Error("Unknown config mode...")
+		fmt.Println("Unknown config mode...")
 		os.Exit(1)
 	}
 
 	if (configErr != nil) {
-		baseLogger.Error(configErr.Error())
+		fmt.Println(configErr.Error())
 		os.Exit(-1)
 	}
 
-	config := *configPtr
-
-	baseLogger.Info(fmt.Sprintf("Start with config [%s]:\n%+v", configType, config))
+	logLevel, logLevelErr := common.ParseFromString(config.Logger)
+	if (logLevelErr != nil) {
+		fmt.Printf("Unable to get log level: %v", logLevelErr.Error())
+		os.Exit(-1)
+	}
+	baseLogger := common.NewLogger(os.Stdout, logLevel)
+	baseLogger.Info(fmt.Sprintf("Start with config [%s]:\n%+v", configType, *config))
 
 	switch config.Mode {
 	case "client":
 
 		logger := common.GetLoggerWithName(baseLogger, "Client")
 
-		client := client.New(
-			config.RemoteAddress,
-			config.TunnelPath,
-			config.RegisterPath,
-			config.Key,
-			config.InterfaceName,
-			logger)
+		client := client.New(config, logger)
 
 		err := client.Start()
 		if err != nil {
@@ -92,17 +87,7 @@ func main() {
 
 		logger := common.GetLoggerWithName(baseLogger, "Server")
 
-		server, err := server.New(
-			config.Network,
-			config.InterfaceName,
-			config.MTU,
-			config.ListenAddress,
-			config.RegisterPath,
-			config.TunnelPath,
-			config.Key,
-			config.DefaultPagePath,
-			config.StaticFolderPath,
-			logger)
+		server, err := server.New(config, logger)
 
 		if err != nil {
 			logger.Error(err.Error())

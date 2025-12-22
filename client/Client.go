@@ -33,15 +33,15 @@ type Client struct {
 	logger *slog.Logger
 }
 
-func New(remoteAddress string, tunnelPath string, registerPath string, key string, interfaceName string, logger *slog.Logger) *Client {
-	logger.Info(fmt.Sprintf("Create client: Target URL: \"%s\"", remoteAddress+tunnelPath))
+func New(config *common.Config, logger *slog.Logger) *Client {
+	logger.Info(fmt.Sprintf("Create client: Target URL: \"%s\"", config.RemoteAddress+config.TunnelPath))
 	return &Client{
-		remoteAddress: remoteAddress,
-		tunnelPath:    tunnelPath,
-		registerPath:  registerPath,
-		tunnel:        wstunnel.New(remoteAddress, tunnelPath, key, logger),
-		key:           key,
-		interfaceName: interfaceName,
+		remoteAddress: config.RemoteAddress,
+		tunnelPath:    config.TunnelPath,
+		registerPath:  config.RegisterPath,
+		tunnel:        wstunnel.New(config.RemoteAddress, config.TunnelPath, config.Key, logger),
+		key:           config.Key,
+		interfaceName: config.InterfaceName,
 		logger:        logger}
 }
 

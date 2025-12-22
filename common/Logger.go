@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -78,6 +79,21 @@ func levelShort(l slog.Level) string {
 	case l == slog.LevelError:
 		return "E"
 	default:
-		return "E"
+		return "D"
+	}
+}
+
+func ParseFromString(level string) (slog.Level, error) {
+	switch level {
+	case "DEBUG":
+		return slog.LevelDebug, nil
+	case "INFO":
+		return slog.LevelInfo, nil
+	case "WARN":
+		return slog.LevelWarn, nil
+	case "ERROR":
+		return slog.LevelError, nil
+	default:
+		return slog.LevelDebug, errors.New("unknown logger type")
 	}
 }

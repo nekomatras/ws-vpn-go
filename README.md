@@ -3,7 +3,13 @@
 ## Build and run
 
 ### Build:
-- CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ws-vpn main.go
+- CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./target/ws-vpn main.go
+
+### Cert:
+- openssl req -x509 -newkey rsa:2048 -nodes -keyout ./target/key.pem -out ./target/cert.pem -days 365
+
+### Apply env vars
+- export $(grep -v '^#' client.env | xargs)
 
 ### Run:
 - sudo ./ws-vpn -config=./client.conf

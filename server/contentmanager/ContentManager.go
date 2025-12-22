@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"ws-vpn-go/common"
 )
 
 type ContentManager struct {
@@ -48,8 +49,7 @@ func (manager *ContentManager) writeContentHandler(w http.ResponseWriter, r *htt
 }
 
 func (manager *ContentManager) WriteContentToResponse(w http.ResponseWriter, r *http.Request) {
-	manager.logger.Warn(fmt.Sprintf("ContentManager: %s tru to access %s; Send default content", r.RemoteAddr, r.URL.String()))
+	manager.logger.Warn(fmt.Sprintf("%s try to access %s; Send default content", common.GetRealIP(r), r.URL.String()))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(manager.page)
-	w.WriteHeader(http.StatusOK)
 }

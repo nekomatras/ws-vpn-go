@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 
 	"ws-vpn-go/common"
 	netinterface "ws-vpn-go/common/interface"
@@ -14,41 +15,42 @@ import (
 )
 
 type Server struct {
-	key        string
-	serverInfo common.ServerInfo
+	key            string
+	serverInfo     common.ServerInfo
 
-	listenAddress string
-	registerPath  string
+	listenAddress  string
+	registerPath   string
+
+	secure         bool
+	privateKeyPath string
+	chainPath      string
 
 	netInterface   *netinterface.NetworkInterface
 	tunnel         tunnel.Tunnel
 	netManager     *networkmanager.Networkmanager
 	contentManager *contentmanager.ContentManager
 
-	logger *slog.Logger
+	logger         *slog.Logger
 }
 
 func New(
-	network string,
-	interfaceName string,
-	mtu uint,
-	listenAddress string,
-	registerPath string,
-	tunnelPath string,
-	key string,
-	pagePath string,
-	staticPath string,
+	config *common.Config,
 	logger *slog.Logger) (*Server, error) {
 	var err error
 
-	logger.Info(fmt.Sprintf("Create server: WebSocket URL: \"%s%s\"; MTU: %d", listenAddress, tunnelPath, mtu))
+	logger.Info(fmt.Sprintf(
+		"Create server: WebSocket URL: \"%s%s\"; MTU: %d",
+		config.ListenAddress,
+		config.TunnelPath,
+		config.MTU,
+	))
 
-	networkManager, err := networkmanager.New(network)
+	networkManager, err := networkmanager.New(config.Network)
 	if err != nil {
 		return nil, err
 	}
 
-	contentManager, err := contentmanager.New(pagePath, staticPath, logger)
+	contentManager, err := contentmanager.New(config.DefaultPagePath, config.StaticFolderPath, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -59,19 +61,32 @@ func New(
 	}
 
 	info := common.ServerInfo{
-		MTU:                   mtu,
+		MTU:                   config.MTU,
 		InternalServerAddress: address.String(),
 	}
 
 	server := &Server{
-		netInterface:   netinterface.New(fmt.Sprintf("%s/%d", address.String(), networkManager.GetSubNet()), interfaceName, mtu, logger),
-		tunnel:         wstunnel.New(tunnelPath, key, info, logger),
+		netInterface:   netinterface.New(
+			fmt.Sprintf(
+				"%s/%d",
+				address.String(),
+				networkManager.GetSubNet(),
+			),
+			config.InterfaceName,
+			config.MTU,
+			logger,
+		),
+		tunnel:         wstunnel.New(config.TunnelPath, config.Key, info, logger),
 		netManager:     networkManager,
 		contentManager: contentManager,
-		registerPath:   registerPath,
+		listenAddress:  config.ListenAddress,
+		registerPath:   config.RegisterPath,
 		logger:         logger,
-		key:            key,
+		key:            config.Key,
 		serverInfo:     info,
+		secure:         config.Secure,
+		privateKeyPath: config.PrivateKey,
+		chainPath:      config.Chain,
 	}
 
 	return server, nil
@@ -95,7 +110,26 @@ func (server *Server) Start() error {
 	server.tunnel.SetConnectionCloseHandler(server.netManager.FreeAddress)
 
 	server.tunnel.Run()
-	go http.ListenAndServe(server.listenAddress, serverMux)
+
+	go func() {
+		if server.secure {
+			err := http.ListenAndServeTLS(
+				server.listenAddress,
+				server.chainPath,
+				server.privateKeyPath,
+				serverMux)
+			if err != nil {
+				server.logger.Error(err.Error())
+				os.Exit(-1)
+			}
+		} else {
+			err := http.ListenAndServe(server.listenAddress, serverMux)
+			if err != nil {
+				server.logger.Error(err.Error())
+				os.Exit(-1)
+			}
+		}
+	}()
 
 	go server.tunnel.WriteTo(*server.netInterface.Interface())
 	go server.netInterface.WriteTo(server.tunnel.WriteToTunnel)
@@ -104,7 +138,7 @@ func (server *Server) Start() error {
 }
 
 func (server *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
-	server.logger.Info(fmt.Sprintf("Process register from: %s", r.RemoteAddr))
+	server.logger.Info(fmt.Sprintf("Process register from: %s", common.GetRealIP(r)))
 	if common.CheckKey(r, server.key) {
 
 		macString := r.Header.Get("MAC")
@@ -125,18 +159,18 @@ func (server *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			server.logger.Info(fmt.Sprintf("[%s] Reserve connection. Clinet IP: %s", r.RemoteAddr, clientIp.String()))
+			server.logger.Info(fmt.Sprintf("[%s] Reserve connection. Clinet IP: %s", common.GetRealIP(r), clientIp.String()))
 			server.tunnel.ReserveConnection(clientIp)
 		}
 
 		clientInfo := server.serverInfo
 		clientInfo.ClientIp = fmt.Sprintf("%s/%d", clientIp.String(), server.netManager.GetSubNet())
 
-		server.logger.Info(fmt.Sprintf("[%s] Send info: %+v", r.RemoteAddr, clientInfo))
+		server.logger.Info(fmt.Sprintf("[%s] Send info: %+v", common.GetRealIP(r), clientInfo))
 		clientInfo.WriteToResponse(w)
 		w.WriteHeader(http.StatusAccepted)
 	} else {
-		server.logger.Error(fmt.Sprintf("[%s] Try to register with wrong key", r.RemoteAddr))
+		server.logger.Error(fmt.Sprintf("[%s] Try to register with wrong key", common.GetRealIP(r)))
 		server.contentManager.WriteContentToResponse(w, r)
 	}
 }

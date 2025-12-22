@@ -68,7 +68,7 @@ func (netInterface *NetworkInterface) WriteTo(tunnelWriter func(common.IpAddress
 
 		writeErr := tunnelWriter(destIp, packet)
 		if writeErr != nil {
-			netInterface.logger.Warn(fmt.Sprintf("[%s -> %s] Unable to write to tunnel: %v",
+			netInterface.logger.Debug(fmt.Sprintf("[%s -> %s] Unable to write to tunnel: %v",
 				sourceIp.String(),
 				destIp.String(),
 				writeErr))

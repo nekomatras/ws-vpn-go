@@ -2,10 +2,12 @@ package common
 
 import (
 	"fmt"
+	"net/http"
 	"os/exec"
+	"strings"
 
-	"github.com/songgao/water"
 	"github.com/gorilla/websocket"
+	"github.com/songgao/water"
 )
 
 type Interface = *water.Interface
@@ -47,5 +49,20 @@ func SetupInterface(iface Interface, address string, mtu uint) error {
 	}
 
 	return nil
+}
+
+func GetRealIP(r *http.Request) string {
+
+    xff := r.Header.Get("X-Forwarded-For")
+    if xff != "" {
+        parts := strings.Split(xff, ",")
+        return strings.TrimSpace(parts[0])
+    }
+
+    if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+        return xrip
+    }
+
+    return r.RemoteAddr
 }
 

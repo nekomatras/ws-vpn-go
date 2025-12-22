@@ -28,7 +28,7 @@ type WsTunnel struct {
 
 func New(remoteAddress string, tunnelPath string, key string, logger *slog.Logger) *WsTunnel {
 	return &WsTunnel{
-		remoteURL: "ws://" + remoteAddress + tunnelPath,
+		remoteURL: "wss://" + remoteAddress + tunnelPath,
 		key: key,
 		logger: logger,
 	}
@@ -113,7 +113,7 @@ func (tunnel *WsTunnel) tryConnectToRemote() error {
 	header.Add("Key", tunnel.key)
 	header.Add("ClientIP", tunnel.clientIp.String())
 
-	wsPath := strings.Replace(tunnel.remoteURL, "http://", "", 1)
+	wsPath := strings.Replace(tunnel.remoteURL, "https://", "", 1)
 
 	for repeat != 0 {
 		tunnel.wsTunnel, _, err = websocket.DefaultDialer.Dial(wsPath, header)
