@@ -55,7 +55,7 @@ func New(tunnelPath string, key string, serverInfo common.ServerInfo, logger *sl
 func (tunnel *WsTunnel) checkClientAddress(request *http.Request) bool {
 	clientAddress := request.Header.Get("ClientIP")
 	ip := common.GetIpFromString(clientAddress)
-	return !tunnel.clinetConnectionRegister.Contains(ip)
+	return tunnel.clinetConnectionRegister.Contains(ip)
 }
 
 //TODO: добавить освобождение адреса на сервере

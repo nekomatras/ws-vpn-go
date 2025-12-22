@@ -17,10 +17,15 @@ func NewIpAddress(a uint8, b uint8, c uint8, d uint8) IpAddress {
 }
 
 func GetIpFromString(ipString string) IpAddress {
+	var ip net.IP;
+	var err error;
 
-	ip, _, err := net.ParseCIDR(ipString)
+	ip, _, err = net.ParseCIDR(ipString)
 	if err != nil {
-		return GetAllZeroIp()
+		ip = net.ParseIP(ipString)
+		if ip == nil {
+			return GetAllZeroIp()
+		}
 	}
 
 	ipBytes := ip.To4()

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"log/slog"
 
+	"strings"
+
 	"ws-vpn-go/common"
 
 	"github.com/gorilla/websocket"
@@ -89,6 +91,11 @@ func (tunnel *WsTunnel) ReserveConnection(ip common.IpAddress) error {
 			"unable to set client ip address [%s], its already seted to %s", ip.String(), tunnel.clientIp.String())
 	}
 
+	if ip == common.GetAllZeroIp() {
+		return fmt.Errorf(
+			"unable to set client ip address [%s]", ip.String())
+	}
+
 	tunnel.clientIp = ip
 	return nil
 }
@@ -106,15 +113,17 @@ func (tunnel *WsTunnel) tryConnectToRemote() error {
 	header.Add("Key", tunnel.key)
 	header.Add("ClientIP", tunnel.clientIp.String())
 
+	wsPath := strings.Replace(tunnel.remoteURL, "http://", "", 1)
+
 	for repeat != 0 {
-		tunnel.wsTunnel, _, err = websocket.DefaultDialer.Dial(tunnel.remoteURL, header)
+		tunnel.wsTunnel, _, err = websocket.DefaultDialer.Dial(wsPath, header)
 		if err == nil {
 			return nil
 		}
 
 		repeat--
 		err = fmt.Errorf("web-socket connection error: %w", err)
-		tunnel.logger.Warn(fmt.Sprintf("Unadle to connect tunnel: %v; Repeat: %d", err, repeat))
+		tunnel.logger.Warn(fmt.Sprintf("[%s] Unadle to connect tunnel: %v; Repeat: %d", wsPath, err, repeat))
 	}
 
 	return err

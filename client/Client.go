@@ -9,7 +9,7 @@ import (
 
 	"ws-vpn-go/client/tunnel/wstunnel"
 	"ws-vpn-go/common"
-	"ws-vpn-go/common/interface"
+	netinterface "ws-vpn-go/common/interface"
 	"ws-vpn-go/common/tunnel"
 )
 
@@ -41,6 +41,7 @@ func New(remoteAddress string, tunnelPath string, registerPath string, key strin
 		registerPath:  registerPath,
 		tunnel:        wstunnel.New(remoteAddress, tunnelPath, key, logger),
 		key:           key,
+		interfaceName: interfaceName,
 		logger:        logger}
 }
 
@@ -53,10 +54,12 @@ func (client *Client) Start() error {
 		return err
 	}
 
+	client.logger.Info(fmt.Sprintf("Got server info: %+v", info))
+
 	client.ipAddress = common.GetIpFromString(info.ClientIp)
 	client.mtu = info.MTU
 
-	client.netInterface = netinterface.New(client.ipAddress.String(), client.interfaceName, client.mtu, client.logger)
+	client.netInterface = netinterface.New(info.ClientIp, client.interfaceName, client.mtu, client.logger)
 	err = client.netInterface.Init()
 	if err != nil {
 		client.logger.Error(fmt.Sprintf("Unable to setup interface: %v", err))
@@ -121,12 +124,16 @@ func (client *Client) register() (common.ServerInfo, error) {
 			Timeout: Timeout,
 		}
 
-		req, err := http.NewRequest("GET", client.remoteAddress+client.registerPath, nil)
+		url := client.remoteAddress + client.registerPath
+		client.logger.Info(fmt.Sprintf("Try to register: %s", url))
+
+		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			return common.ServerInfo{}, fmt.Errorf("cannot create request: %w", err)
 		}
 
 		req.Header.Set("Key", client.key)
+		req.Header.Set("MAC", "a0:ad:9f:81:3f:cc")
 
 		resp, err := httpClient.Do(req)
 		if err != nil {

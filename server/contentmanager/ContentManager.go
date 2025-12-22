@@ -1,21 +1,26 @@
 package contentmanager
 
 import (
-	"os"
+	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 )
 
 type ContentManager struct {
 	page             []byte
 	pagePath         string
 	staticFolderPath string
+
+	logger *slog.Logger
 }
 
-func New(pagePath string, staticFolderPath string) (*ContentManager, error) {
+func New(pagePath string, staticFolderPath string, logger *slog.Logger) (*ContentManager, error) {
 
 	manager := &ContentManager{
 		pagePath: pagePath,
 		staticFolderPath: staticFolderPath,
+		logger: logger,
 	}
 
 	page, err := os.ReadFile(pagePath)
@@ -30,7 +35,7 @@ func New(pagePath string, staticFolderPath string) (*ContentManager, error) {
 
 func (manager *ContentManager) RegisterHandlers(mux *http.ServeMux) error {
 
-	mux.HandleFunc(manager.pagePath, manager.writeContentHandler)
+	mux.HandleFunc("/", manager.writeContentHandler)
 
 	fs := http.FileServer(http.Dir(manager.staticFolderPath))
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
@@ -39,10 +44,11 @@ func (manager *ContentManager) RegisterHandlers(mux *http.ServeMux) error {
 }
 
 func (manager *ContentManager) writeContentHandler(w http.ResponseWriter, r *http.Request) {
-	manager.WriteContentToResponse(w)
+	manager.WriteContentToResponse(w, r)
 }
 
-func (manager *ContentManager) WriteContentToResponse(w http.ResponseWriter) {
+func (manager *ContentManager) WriteContentToResponse(w http.ResponseWriter, r *http.Request) {
+	manager.logger.Warn(fmt.Sprintf("ContentManager: %s tru to access %s; Send default content", r.RemoteAddr, r.URL.String()))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(manager.page)
 	w.WriteHeader(http.StatusOK)

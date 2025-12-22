@@ -48,7 +48,7 @@ func New(
 		return nil, err
 	}
 
-	contentManager, err := contentmanager.New(pagePath, staticPath)
+	contentManager, err := contentmanager.New(pagePath, staticPath, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func New(
 	}
 
 	server := &Server{
-		netInterface:   netinterface.New(address.String(), interfaceName, mtu, logger),
+		netInterface:   netinterface.New(fmt.Sprintf("%s/%d", address.String(), networkManager.GetSubNet()), interfaceName, mtu, logger),
 		tunnel:         wstunnel.New(tunnelPath, key, info, logger),
 		netManager:     networkManager,
 		contentManager: contentManager,
@@ -104,33 +104,39 @@ func (server *Server) Start() error {
 }
 
 func (server *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
+	server.logger.Info(fmt.Sprintf("Process register from: %s", r.RemoteAddr))
 	if common.CheckKey(r, server.key) {
 
 		macString := r.Header.Get("MAC")
 		mac := common.GetMacFromString(macString)
 		if mac == common.GetAllZeroMac() {
-			server.contentManager.WriteContentToResponse(w)
+			server.contentManager.WriteContentToResponse(w, r)
+			return
 		}
 
 		clientIp, ok := server.netManager.GetAddress(mac)
 
 		if !ok {
-			clientIp, err := server.netManager.AssignAddress(mac)
+			var err error;
+			clientIp, err = server.netManager.AssignAddress(mac)
 
 			if err != nil {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
 
+			server.logger.Info(fmt.Sprintf("[%s] Reserve connection. Clinet IP: %s", r.RemoteAddr, clientIp.String()))
 			server.tunnel.ReserveConnection(clientIp)
 		}
 
 		clientInfo := server.serverInfo
-		clientInfo.ClientIp = clientIp.String()
+		clientInfo.ClientIp = fmt.Sprintf("%s/%d", clientIp.String(), server.netManager.GetSubNet())
 
+		server.logger.Info(fmt.Sprintf("[%s] Send info: %+v", r.RemoteAddr, clientInfo))
 		clientInfo.WriteToResponse(w)
 		w.WriteHeader(http.StatusAccepted)
 	} else {
-		server.contentManager.WriteContentToResponse(w)
+		server.logger.Error(fmt.Sprintf("[%s] Try to register with wrong key", r.RemoteAddr))
+		server.contentManager.WriteContentToResponse(w, r)
 	}
 }

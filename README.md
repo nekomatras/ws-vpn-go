@@ -19,6 +19,7 @@
 
 ### Run Image:
 - sudo docker run --rm ws-vpn:latest
+- sudo docker run --rm -v /path/to/config/config.conf:/etc/ws-wpn.conf app:latest
 
 ## TODO:
 

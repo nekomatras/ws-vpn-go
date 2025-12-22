@@ -8,12 +8,48 @@ import (
 	"ws-vpn-go/common"
 )
 
-type Networkmanager struct {
-	mutex    sync.RWMutex
-	addressPool []common.IpAddress
+type SyncMap[K comparable, V any] struct {
+	mutex sync.RWMutex
+	data  map[K]V
+}
 
-	assignedMacByIp map[common.IpAddress]common.MacAddress
-	assignedIpByMac map[common.MacAddress]common.IpAddress
+func MakeSyncMap[K comparable, V any]() SyncMap[K, V] {
+	return SyncMap[K, V]{
+		data: make(map[K]V),
+	}
+}
+
+func (s *SyncMap[K, V]) Get(key K) (V, bool) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	val, ok := s.data[key]
+	return val, ok
+}
+
+func (s *SyncMap[K, V]) Set(key K, value V) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.data[key] = value
+}
+
+func (s *SyncMap[K, V]) Delete(key K) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	delete(s.data, key)
+}
+
+// --------------------------------------------------------------------
+
+type Networkmanager struct {
+	// mutex       sync.RWMutex
+	addressPool []common.IpAddress
+	subNet uint16
+
+	assignedMacByIp SyncMap[common.IpAddress, common.MacAddress]
+	assignedIpByMac SyncMap[common.MacAddress, common.IpAddress]
 }
 
 func New(subnet string) (*Networkmanager, error) {
@@ -28,33 +64,28 @@ func New(subnet string) (*Networkmanager, error) {
 	}
 
 	return &Networkmanager{
-		addressPool: availableAddresses,
-		assignedMacByIp: make(map[common.IpAddress]common.MacAddress),
-		assignedIpByMac: make(map[common.MacAddress]common.IpAddress),
+		addressPool:     availableAddresses,
+		subNet: 24,
+		assignedMacByIp: MakeSyncMap[common.IpAddress, common.MacAddress](),
+		assignedIpByMac: MakeSyncMap[common.MacAddress, common.IpAddress](),
 	}, nil
 }
 
 func (manager *Networkmanager) FreeAddress(ip common.IpAddress) {
-	manager.mutex.Lock()
-	defer manager.mutex.Unlock()
-
-	mac, ok := manager.assignedMacByIp[ip]
+	mac, ok := manager.assignedMacByIp.Get(ip)
 	if !ok {
 		return
 	}
 
-	delete(manager.assignedMacByIp, ip)
-	delete(manager.assignedIpByMac, mac)
+	manager.assignedMacByIp.Delete(ip)
+	manager.assignedIpByMac.Delete(mac)
 }
 
 func (manager *Networkmanager) AssignRouterAddress() (common.IpAddress, error) {
-	manager.mutex.Lock()
-	defer manager.mutex.Unlock()
-
 	for _, address := range manager.addressPool {
 		if address.D == 1 {
-			manager.assignedMacByIp[address] = common.GetAllZeroMac()
-			manager.assignedIpByMac[common.GetAllZeroMac()] = address
+			manager.assignedMacByIp.Set(address, common.GetAllZeroMac())
+			manager.assignedIpByMac.Set(common.GetAllZeroMac(), address)
 			return address, nil
 		}
 	}
@@ -62,11 +93,12 @@ func (manager *Networkmanager) AssignRouterAddress() (common.IpAddress, error) {
 	return common.GetAllZeroIp(), fmt.Errorf("unable to assign X.X.X.1 address")
 }
 
-func (manager *Networkmanager) GetAddress(mac common.MacAddress) (common.IpAddress, bool) {
-	manager.mutex.RLock()
-	defer manager.mutex.RUnlock()
+func (manager *Networkmanager) GetSubNet() uint16 {
+	return manager.subNet
+}
 
-	ip, ok := manager.assignedIpByMac[mac]
+func (manager *Networkmanager) GetAddress(mac common.MacAddress) (common.IpAddress, bool) {
+	ip, ok := manager.assignedIpByMac.Get(mac)
 	if ok {
 		return ip, true
 	} else {
@@ -75,10 +107,7 @@ func (manager *Networkmanager) GetAddress(mac common.MacAddress) (common.IpAddre
 }
 
 func (manager *Networkmanager) AssignAddress(mac common.MacAddress) (common.IpAddress, error) {
-
-	manager.mutex.RLock()
-
-	ip, ok := manager.assignedIpByMac[mac]
+	ip, ok := manager.assignedIpByMac.Get(mac)
 	if ok {
 		return ip, nil
 	}
@@ -88,26 +117,21 @@ func (manager *Networkmanager) AssignAddress(mac common.MacAddress) (common.IpAd
 		return common.GetAllZeroIp(), fmt.Errorf("unable to get ip address: %v", err)
 	}
 
-	manager.mutex.RUnlock()
-	manager.mutex.Lock()
-
-	_, contains := manager.assignedMacByIp[availableAddress]
+	_, contains := manager.assignedMacByIp.Get(availableAddress)
 	if !contains {
-		manager.assignedMacByIp[availableAddress] = mac
-		manager.assignedIpByMac[mac] = availableAddress
+		manager.assignedMacByIp.Set(availableAddress, mac)
+		manager.assignedIpByMac.Set(mac, availableAddress)
 
-		manager.mutex.Unlock()
 		return availableAddress, nil
 	}
 
-	manager.mutex.Unlock()
 	return manager.AssignAddress(mac)
 }
 
 func (manager *Networkmanager) findAvailableAddress() (common.IpAddress, error) {
 	for _, ip := range manager.addressPool {
-		_, contains := manager.assignedMacByIp[ip]
-		if contains {
+		_, contains := manager.assignedMacByIp.Get(ip)
+		if !contains {
 			return ip, nil
 		}
 	}
@@ -117,10 +141,11 @@ func (manager *Networkmanager) findAvailableAddress() (common.IpAddress, error) 
 
 func getIpListBySubNet(subnet string) ([]common.IpAddress, error) {
 
-	ip, _, err := net.ParseCIDR(subnet)
+	rawIp, _, err := net.ParseCIDR(subnet)
 	if err != nil {
 		return nil, err
 	}
+	ip := rawIp.To4()
 
 	adresses := make([]common.IpAddress, 0, 254)
 
