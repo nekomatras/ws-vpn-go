@@ -72,6 +72,11 @@ func (netInterface *NetworkInterface) WriteTo(tunnelWriter func(common.IpAddress
 				sourceIp.String(),
 				destIp.String(),
 				writeErr))
+		} else {
+			netInterface.logger.Debug(fmt.Sprintf("[%s -> %s] Write to tunnel, package len: %d",
+				sourceIp.String(),
+				destIp.String(),
+				n))
 		}
 	}
 }

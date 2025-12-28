@@ -45,6 +45,7 @@ func (tunnel *WsTunnel) WriteTo(target io.Writer) error {
 			tunnel.logger.Error(fmt.Sprintf("WebSocket read error: %v", err))
 			reconnectErr := tunnel.tryConnectToRemote()
 			if reconnectErr != nil {
+				tunnel.logger.Error(fmt.Sprintf("WebSocket unable to reconnect: %v", err))
 				return reconnectErr
 			}
 			continue
@@ -62,6 +63,13 @@ func (tunnel *WsTunnel) WriteTo(target io.Writer) error {
 
 func (tunnel *WsTunnel) WriteToTunnel(_ common.IpAddress, packet []byte) error {
 	var err error
+
+	if (tunnel.wsTunnel == nil) {
+		reconnectErr := tunnel.tryConnectToRemote()
+		if reconnectErr != nil {
+			return fmt.Errorf("tunnel not initialived")
+		}
+	}
 
 	err = tunnel.wsTunnel.WriteMessage(websocket.BinaryMessage, packet)
 		if err != nil {
