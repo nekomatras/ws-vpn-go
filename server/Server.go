@@ -63,6 +63,7 @@ func New(
 	info := common.ServerInfo{
 		MTU:                   config.MTU,
 		InternalServerAddress: address.String(),
+		TunnelPath:            config.TunnelPath,
 	}
 
 	server := &Server{

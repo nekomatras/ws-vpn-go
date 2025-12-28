@@ -8,7 +8,7 @@ import (
 type ServerInfo struct {
 	MTU                   uint
 	InternalServerAddress string
-
+	TunnelPath            string
 	ClientIp              string
 }
 

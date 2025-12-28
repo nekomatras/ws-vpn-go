@@ -18,7 +18,7 @@ const Repeat = 5
 
 type Client struct {
 	netInterface *netinterface.NetworkInterface
-	tunnel       tunnel.Tunnel
+	tunnel        tunnel.Tunnel
 
 	key           string
 	interfaceName string
@@ -27,19 +27,17 @@ type Client struct {
 	tunnelPath    string
 	registerPath  string
 
-	ipAddress common.IpAddress
-	mtu       uint
+	ipAddress     common.IpAddress
+	mtu           uint
 
-	logger *slog.Logger
+	logger       *slog.Logger
 }
 
 func New(config *common.Config, logger *slog.Logger) *Client {
 	logger.Info(fmt.Sprintf("Create client: Target URL: \"%s\"", config.RemoteAddress+config.TunnelPath))
 	return &Client{
 		remoteAddress: config.RemoteAddress,
-		tunnelPath:    config.TunnelPath,
 		registerPath:  config.RegisterPath,
-		tunnel:        wstunnel.New(config.RemoteAddress, config.TunnelPath, config.Key, logger),
 		key:           config.Key,
 		interfaceName: config.InterfaceName,
 		logger:        logger}
@@ -58,8 +56,14 @@ func (client *Client) Start() error {
 
 	client.ipAddress = common.GetIpFromString(info.ClientIp)
 	client.mtu = info.MTU
+	client.tunnelPath = info.TunnelPath
 
 	client.netInterface = netinterface.New(info.ClientIp, client.interfaceName, client.mtu, client.logger)
+	client.tunnel = wstunnel.New(client.remoteAddress,
+		client.tunnelPath,
+		client.key,
+		client.logger)
+
 	err = client.netInterface.Init()
 	if err != nil {
 		client.logger.Error(fmt.Sprintf("Unable to setup interface: %v", err))
