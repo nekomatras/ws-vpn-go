@@ -68,7 +68,7 @@ $ ip rule list
 Create routes in vpn table. Default for VPN gateway and exception rule for public vpn server address to route it to public network:
 ```
 sudo ip route add default via 10.0.0.1 dev tunClient table vpn
-sudo ip route add 88.119.161.211 via 192.168.0.1 table vpn
+sudo ip route add 8.8.8.8 via 192.168.0.1 table vpn
 ```
 Marked traffic route by vpn table, other (to addresses from ipsets) route by public network (default table).
 Check:
