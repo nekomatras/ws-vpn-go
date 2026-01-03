@@ -17,7 +17,9 @@ type Config struct {
 	InterfaceName    string `json:"interface_name"     env:"INTERFACE_NAME"     default:"tunWS"`                 //Common
 	Key              string `json:"key"                env:"KEY"                default:"SKEBOB"`                //Common
 	RemoteAddress    string `json:"remote_address"     env:"REMOTE_ADDRESS"     default:"https://127.0.0.1"`     //Client
-	ListenAddress    string `json:"listen_address"     env:"LISTEN_ADDRESS"     default:"0.0.0.0"`           //Server
+	RouteTable       int    `json:"route_table"        env:"ROUTE_TABLE"        default:"200"`                   //Client
+	RedirectByMark   int    `json:"redirect_by_mark"   env:"REDIRECT_BY_MARK"   default:"-1"`                 //Client
+	ListenAddress    string `json:"listen_address"     env:"LISTEN_ADDRESS"     default:"0.0.0.0"`               //Server
 	Secure           bool   `json:"secure"             env:"SECURE"             default:"true"`                  //Server
 	Chain            string `json:"chain"              env:"CHAIN"              default:"./chain.pem"`           //Server
 	PrivateKey       string `json:"private_key"        env:"PRIVATE_KEY"        default:"./key.pem"`             //Server

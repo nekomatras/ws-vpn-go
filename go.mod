@@ -9,5 +9,7 @@ require github.com/creasty/defaults v1.8.0
 require (
 	github.com/caarlos0/env/v9 v9.0.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/vishvananda/netlink v1.3.1
+	github.com/vishvananda/netns v0.0.5 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 )

@@ -20,17 +20,20 @@ type Client struct {
 	netInterface *netinterface.NetworkInterface
 	tunnel        tunnel.Tunnel
 
-	key           string
-	interfaceName string
+	key            string
+	interfaceName  string
 
-	remoteAddress string
-	tunnelPath    string
-	registerPath  string
+	routingTable   int
+	redirectByMark int
 
-	ipAddress     common.IpAddress
-	mtu           uint
+	remoteAddress  string
+	tunnelPath     string
+	registerPath   string
 
-	logger       *slog.Logger
+	ipAddress      common.IpAddress
+	mtu            uint
+
+	logger         *slog.Logger
 }
 
 func New(config *common.Config, logger *slog.Logger) *Client {
@@ -67,6 +70,15 @@ func (client *Client) Start() error {
 	err = client.netInterface.Init()
 	if err != nil {
 		client.logger.Error(fmt.Sprintf("Unable to setup interface: %v", err))
+		return err
+	}
+
+	err = client.netInterface.SetupRoutingSettings(
+		client.remoteAddress,
+		common.GetIpFromString(info.GatewayIp),
+		client.routingTable,
+		client.redirectByMark)
+	if err != nil {
 		return err
 	}
 

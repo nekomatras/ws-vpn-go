@@ -62,7 +62,7 @@ func New(
 
 	info := common.ServerInfo{
 		MTU:                   config.MTU,
-		InternalServerAddress: address.String(),
+		GatewayIp:             address.String(),
 		TunnelPath:            config.TunnelPath,
 	}
 

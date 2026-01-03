@@ -9,16 +9,21 @@ import (
 
 type NetworkInterface struct {
 
-	address          string
-	name             string
-	mtu              uint
+	address              string
+	name                 string
+	mtu                  uint
 
-	localInterface   common.Interface
+	localInterface       common.Interface
 
-	logger *slog.Logger
+	logger               *slog.Logger
 }
 
-func New(interfaceAddress string, interfaceName string, mtu uint, logger *slog.Logger) *NetworkInterface {
+func New(
+	interfaceAddress string,
+	interfaceName string,
+	mtu uint,
+	logger *slog.Logger) *NetworkInterface {
+
 	return &NetworkInterface{
 		address: interfaceAddress,
 		name: interfaceName,
@@ -46,6 +51,30 @@ func (netInterface *NetworkInterface) Init() error {
 	}
 
 	netInterface.logger.Info(fmt.Sprintf("Create VPN interface %s", netInterface.name))
+
+	return err
+}
+
+func (netInterface *NetworkInterface) SetupRoutingSettings(
+	remoteAddress string,
+	gatewayAddress common.IpAddress,
+	routeTable int,
+	redirectByMark int) error {
+	var err error;
+
+	err = common.SetupRouting(
+		netInterface.localInterface,
+		remoteAddress,
+		gatewayAddress,
+		routeTable)
+	if err != nil {
+		return fmt.Errorf("routing setup error: %w", err)
+	}
+
+	err = common.SetIpRule(routeTable, redirectByMark)
+	if err != nil {
+		return fmt.Errorf("ip rule setup error: %w", err)
+	}
 
 	return err
 }

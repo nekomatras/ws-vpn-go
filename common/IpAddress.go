@@ -12,6 +12,15 @@ type IpAddress struct {
 	D uint8
 }
 
+func (address *IpAddress) GetNetIp4() net.IP {
+	return net.IPv4(address.A, address.B, address.A, address.D)
+}
+
+func ConvertIpAddress(ip net.IP) IpAddress {
+	ip4 := ip.To4()
+	return NewIpAddress(ip4[0], ip4[1], ip4[2], ip4[3])
+}
+
 func NewIpAddress(a uint8, b uint8, c uint8, d uint8) IpAddress {
 	return IpAddress{a, b, c, d}
 }

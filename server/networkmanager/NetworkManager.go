@@ -145,12 +145,13 @@ func getIpListBySubNet(subnet string) ([]common.IpAddress, error) {
 	if err != nil {
 		return nil, err
 	}
-	ip := rawIp.To4()
+	ip := common.ConvertIpAddress(rawIp)
 
 	adresses := make([]common.IpAddress, 0, 254)
 
 	for i := uint8(1); i < 255; i++ {
-		addr := common.NewIpAddress(ip[0], ip[1], ip[2], i)
+		ip.D = i
+		addr := ip
 		adresses = append(adresses, addr)
 	}
 
