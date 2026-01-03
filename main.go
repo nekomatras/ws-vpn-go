@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"ws-vpn-go/client"
 	"ws-vpn-go/common"
 	"ws-vpn-go/server"
@@ -82,6 +84,14 @@ func main() {
 			logger.Error(err.Error())
 			os.Exit(-1)
 		}
+
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-c
+			common.ResetRouting(config.RouteTable)
+			os.Exit(0)
+		}()
 
 	case "server":
 

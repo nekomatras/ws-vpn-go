@@ -55,31 +55,9 @@ Declare routing table in `/etc/iproute2/rt_tables`:
 ```
 200 vpn
 ```
-Add rule to route marked packets by vpn table:
-`sudo ip rule add fwmark 1 table 200 priority 500`
-Result:
-```
-$ ip rule list
-0:	from all lookup local
-500:	from all fwmark 0x1 lookup vpn
-32766:	from all lookup main
-32767:	from all lookup default
-```
-Create routes in vpn table. Default for VPN gateway and exception rule for public vpn server address to route it to public network:
-```
-sudo ip route add default via 10.0.0.1 dev tunClient table vpn
-sudo ip route add 8.8.8.8 via 192.168.0.1 table vpn
-```
-Marked traffic route by vpn table, other (to addresses from ipsets) route by public network (default table).
-Check:
-- Ip set address:
-`ip route get 5.255.255.77`
-- Not ip set address (must pass over vpn):
-`ip route get 8.8.8.8`
-- Check marked traffic:
-`ip route get 8.8.8.8 mark 1`
 
-You must set default route for vpn table (wip):
+Set in config:
 ```
-sudo ip route add default via 10.0.0.1 dev tunClient table vpn
+"route_table": 200
+"redirect_by_mark": 1
 ```

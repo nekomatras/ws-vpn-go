@@ -39,11 +39,13 @@ type Client struct {
 func New(config *common.Config, logger *slog.Logger) *Client {
 	logger.Info(fmt.Sprintf("Create client: Target URL: \"%s\"", config.RemoteAddress+config.TunnelPath))
 	return &Client{
-		remoteAddress: config.RemoteAddress,
-		registerPath:  config.RegisterPath,
-		key:           config.Key,
-		interfaceName: config.InterfaceName,
-		logger:        logger}
+		remoteAddress:  config.RemoteAddress,
+		registerPath:   config.RegisterPath,
+		key:            config.Key,
+		interfaceName:  config.InterfaceName,
+		routingTable:   config.RouteTable,
+		redirectByMark: config.RedirectByMark,
+		logger:         logger}
 }
 
 func (client *Client) Start() error {
@@ -73,15 +75,6 @@ func (client *Client) Start() error {
 		return err
 	}
 
-	err = client.netInterface.SetupRoutingSettings(
-		client.remoteAddress,
-		common.GetIpFromString(info.GatewayIp),
-		client.routingTable,
-		client.redirectByMark)
-	if err != nil {
-		return err
-	}
-
 	err = client.tunnel.ReserveConnection(client.ipAddress)
 	if err != nil {
 		return err
@@ -94,6 +87,15 @@ func (client *Client) Start() error {
 
 	go client.tunnel.WriteTo(*client.netInterface.Interface())
 	go client.netInterface.WriteTo(client.tunnel.WriteToTunnel)
+
+	err = client.netInterface.SetupRoutingSettings(
+		client.remoteAddress,
+		common.GetIpFromString(info.GatewayIp),
+		client.routingTable,
+		client.redirectByMark)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -140,7 +142,7 @@ func (client *Client) register() (common.ServerInfo, error) {
 			Timeout: Timeout,
 		}
 
-		url := client.remoteAddress + client.registerPath
+		url := "https://" + client.remoteAddress + client.registerPath
 		client.logger.Info(fmt.Sprintf("Try to register: %s", url))
 
 		req, err := http.NewRequest("GET", url, nil)

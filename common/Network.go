@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/gorilla/websocket"
@@ -63,6 +64,11 @@ func SetupInterface(iface Interface, address string, mtu uint) error {
 		return fmt.Errorf("failed to set %s up: %w", ifName, err)
 	}
 
+	cmd := exec.Command("sudo", "iptables", "-t", "nat", "-A", "POSTROUTING", "-o", ifName, "-j", "MASQUERADE")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to set NAT on interface %s: %w", ifName, err)
+	}
+
 	return nil
 }
 
@@ -89,7 +95,7 @@ func getDefaultGatewayForVpnServerAddress(vpnAddress string) (IpAddress, IpAddre
 		return GetAllZeroIp(), GetAllZeroIp(), fmt.Errorf("failed get route: %v", err)
 	}
 
-	if len(route) == 0 {
+	if len(route) == 0 || len(route[0].Gw) == 0 {
 		return GetAllZeroIp(), GetAllZeroIp(), fmt.Errorf("no route found")
 	}
 
@@ -108,7 +114,12 @@ func SetIpRule(routeTable int, redirectByMark int) error {
 		rule.Mask = &mask
 	}
 
-	return netlink.RuleAdd(rule)
+	err := netlink.RuleAdd(rule)
+	if !os.IsExist(err) {
+		return err
+	}
+
+	return nil
 }
 
 func SetupRouting(
@@ -120,6 +131,11 @@ func SetupRouting(
 	var defaultGateway IpAddress;
 	var remoteIp IpAddress;
 
+	remoteIp, defaultGateway, err = getDefaultGatewayForVpnServerAddress(remoteAddress)
+	if err != nil {
+		return fmt.Errorf("failed get default gateway: %w", err)
+	}
+
 	// ip route add default via <VPN_GATEWAY> dev <VPN_INTERFACE_NAME> table <VPN_ROUTING_TABLE>
 	link, err := netlink.LinkByName(iface.Name())
 	if err != nil {
@@ -128,8 +144,9 @@ func SetupRouting(
 
 	route := &netlink.Route{
 		LinkIndex: link.Attrs().Index,
-		Gw:        gatewayAddress.GetNetIp4(),
+		Gw:        net.ParseIP(gatewayAddress.String()),
 		Table:     routeTable,
+		Scope:     netlink.SCOPE_UNIVERSE,
 	}
 
 	err = netlink.RouteReplace(route)
@@ -138,20 +155,16 @@ func SetupRouting(
 	}
 
 	// ip route add <VPN_SERVER_ADDRESS> via <CURRENT_DEFAULT_GATEWAY> table <VPN_ROUTING_TABLE>
-	defaultGateway, remoteIp, err = getDefaultGatewayForVpnServerAddress(remoteAddress)
-	if err != nil {
-		return fmt.Errorf("failed get default gateway: %w", err)
-	}
-
 	vpnServer := &net.IPNet{
-		IP:   remoteIp.GetNetIp4(),
+		IP:   net.ParseIP(remoteIp.String()),
 		Mask: net.CIDRMask(32, 32),
 	}
 
 	routeToVpnServer := &netlink.Route{
 		Dst:   vpnServer,
-		Gw:    defaultGateway.GetNetIp4(),
+		Gw:    net.ParseIP(defaultGateway.String()),
 		Table: routeTable,
+		Scope: netlink.SCOPE_UNIVERSE,
 	}
 
 	err = netlink.RouteReplace(routeToVpnServer)
@@ -183,11 +196,29 @@ func flushTable(table int) error {
 	return nil
 }
 
+func deleteRulesByTable(routeTable int) error {
+	rules, _ := netlink.RuleList(netlink.FAMILY_ALL)
+	for _, r := range rules {
+		if r.Table == routeTable {
+			netlink.RuleDel(&r)
+		}
+	}
+
+	return nil
+}
+
 func ResetRouting(routeTable int) error {
+	var err error;
+
 	// ip route flush table <VPN_ROUTING_TABLE>
-	err := flushTable(routeTable)
+	err = flushTable(routeTable)
 	if err != nil {
 		return fmt.Errorf("failed to flush table %d: %w", routeTable, err)
+	}
+
+	err = deleteRulesByTable(routeTable)
+	if err != nil {
+		return fmt.Errorf("failed to delete rules %d: %w", routeTable, err)
 	}
 
 	return nil

@@ -18,6 +18,9 @@ func (address *IpAddress) GetNetIp4() net.IP {
 
 func ConvertIpAddress(ip net.IP) IpAddress {
 	ip4 := ip.To4()
+	if ip4 == nil {
+		return GetAllZeroIp()
+	}
 	return NewIpAddress(ip4[0], ip4[1], ip4[2], ip4[3])
 }
 
