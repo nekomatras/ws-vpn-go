@@ -16,7 +16,7 @@ import (
 type Interface = *water.Interface
 type Tunnel = *websocket.Conn
 
-const PRIORITY = 100;
+const PRIORITY = 100
 
 func CreateInterface(name string) (Interface, error) {
 	parameters := water.PlatformSpecificParams{}
@@ -64,9 +64,9 @@ func SetupInterface(iface Interface, address string, mtu uint) error {
 		return fmt.Errorf("failed to set %s up: %w", ifName, err)
 	}
 
-	cmd := exec.Command("sudo", "iptables", "-t", "nat", "-A", "POSTROUTING", "-o", ifName, "-j", "MASQUERADE")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to set NAT on interface %s: %w", ifName, err)
+	cmd := exec.Command("iptables", "-t", "nat", "-A", "POSTROUTING", "-o", ifName, "-j", "MASQUERADE")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set NAT on interface %s: %w (output: %s)", ifName, err, strings.TrimSpace(string(output)))
 	}
 
 	return nil
@@ -127,9 +127,9 @@ func SetupRouting(
 	remoteAddress string,
 	gatewayAddress IpAddress,
 	routeTable int) error {
-	var err error;
-	var defaultGateway IpAddress;
-	var remoteIp IpAddress;
+	var err error
+	var defaultGateway IpAddress
+	var remoteIp IpAddress
 
 	remoteIp, defaultGateway, err = getDefaultGatewayForVpnServerAddress(remoteAddress)
 	if err != nil {
@@ -175,7 +175,6 @@ func SetupRouting(
 	return nil
 }
 
-
 func flushTable(table int) error {
 	routes, err := netlink.RouteListFiltered(
 		netlink.FAMILY_ALL,
@@ -208,7 +207,7 @@ func deleteRulesByTable(routeTable int) error {
 }
 
 func ResetRouting(routeTable int) error {
-	var err error;
+	var err error
 
 	// ip route flush table <VPN_ROUTING_TABLE>
 	err = flushTable(routeTable)
@@ -226,16 +225,15 @@ func ResetRouting(routeTable int) error {
 
 func GetRealIP(r *http.Request) string {
 
-    xff := r.Header.Get("X-Forwarded-For")
-    if xff != "" {
-        parts := strings.Split(xff, ",")
-        return strings.TrimSpace(parts[0])
-    }
+	xff := r.Header.Get("X-Forwarded-For")
+	if xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
 
-    if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
-        return xrip
-    }
+	if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+		return xrip
+	}
 
-    return r.RemoteAddr
+	return r.RemoteAddr
 }
-
