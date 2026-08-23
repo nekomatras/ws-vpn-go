@@ -27,6 +27,7 @@ type Config struct {
 	TunnelPath       string `json:"tunnel_path"        env:"TUNNEL_PATH"        default:"/ws"`                   //Server
 	MTU                uint `json:"mtu"                env:"MTU"                default:"1432"`                  //Server
 	Network          string `json:"network"            env:"NETWORK"            default:"10.0.0.0/24"`           //Server
+	ReservationTTL     int  `json:"reservation_ttl"    env:"RESERVATION_TTL"    default:"300"`                   //Server, seconds; how long a disconnected client's ip+token stay reserved for reconnect
 	DefaultPagePath  string `json:"default_page_path"  env:"DEFAULT_PAGE_PATH"  default:"./index.html"`          //Server
 	StaticFolderPath string `json:"static_folder_path" env:"STATIC_FOLDER_PATH" default:"./static/"`             //Server
 }

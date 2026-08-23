@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"ws-vpn-go/common"
 	netinterface "ws-vpn-go/common/interface"
@@ -77,7 +78,7 @@ func New(
 			config.MTU,
 			logger,
 		),
-		tunnel:         wstunnel.New(config.TunnelPath, config.Key, info, logger),
+		tunnel:         wstunnel.New(config.TunnelPath, config.Key, info, time.Duration(config.ReservationTTL)*time.Second, logger),
 		netManager:     networkManager,
 		contentManager: contentManager,
 		listenAddress:  config.ListenAddress,

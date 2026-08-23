@@ -25,18 +25,20 @@ type WsTunnel struct {
 	receivedPackageCh        chan []byte
 	clinetConnectionRegister ConnectionRegister
 
+	reservationTTL           time.Duration
 	closeConnectionHandler   func(common.IpAddress)
 
 	logger                   *slog.Logger
 }
 
-func New(tunnelPath string, key string, serverInfo common.ServerInfo, logger *slog.Logger) *WsTunnel {
+func New(tunnelPath string, key string, serverInfo common.ServerInfo, reservationTTL time.Duration, logger *slog.Logger) *WsTunnel {
 	tunnel := &WsTunnel{
 		tunnelPath:               tunnelPath,
 		key:                      key,
 		serverInfo:               serverInfo,
 		receivedPackageCh:        make(chan []byte, 256),
 		clinetConnectionRegister: NewConnectionRegister(),
+		reservationTTL:           reservationTTL,
 		logger:                   logger,
 	}
 
@@ -66,10 +68,27 @@ func (tunnel *WsTunnel) checkClientAddress(request *http.Request) bool {
 	return true
 }
 
-//TODO: добавить освобождение адреса на сервере
+// handleConnectionClosed detaches the dead socket but keeps the ip+token
+// reservation intact for reservationTTL, so a client that lost the socket
+// to a transient network blip can reconnect with its existing SessionToken
+// without going through /register again. If nothing reclaims the
+// reservation (reconnect, or a fresh /register for the same MAC) before
+// the TTL expires, it's freed so the address can be reassigned.
 func (tunnel *WsTunnel) handleConnectionClosed(clientIp common.IpAddress) {
-	tunnel.clinetConnectionRegister.Remove(clientIp)
-	tunnel.closeConnectionHandler(clientIp)
+	epoch, ok := tunnel.clinetConnectionRegister.Update(clientIp, nil)
+	if !ok || tunnel.reservationTTL <= 0 {
+		return
+	}
+
+	go func() {
+		time.Sleep(tunnel.reservationTTL)
+		if tunnel.clinetConnectionRegister.RemoveIfStale(clientIp, epoch) {
+			tunnel.logger.Info(fmt.Sprintf(
+				"Reservation for %s expired after %s without reconnect, freeing address",
+				clientIp.String(), tunnel.reservationTTL))
+			tunnel.closeConnectionHandler(clientIp)
+		}
+	}()
 }
 
 func (tunnel *WsTunnel) connectionHandler(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +109,7 @@ func (tunnel *WsTunnel) connectionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !tunnel.clinetConnectionRegister.Update(clientIP, ws) {
+	if _, ok := tunnel.clinetConnectionRegister.Update(clientIP, ws); !ok {
 		tunnel.logger.Warn(fmt.Sprintf("Unable to setup connection from [%s]: client ip [%s] is not registered", sourceIp, clientIP))
 		return
 	}
