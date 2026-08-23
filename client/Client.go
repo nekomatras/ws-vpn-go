@@ -23,8 +23,9 @@ type Client struct {
 	key            string
 	interfaceName  string
 
-	routingTable   int
-	redirectByMark int
+	routingTable       int
+	redirectByMark     int
+	createDefaultRoute bool
 
 	remoteAddress  string
 	tunnelPath     string
@@ -43,9 +44,10 @@ func New(config *common.Config, logger *slog.Logger) *Client {
 		registerPath:   config.RegisterPath,
 		key:            config.Key,
 		interfaceName:  config.InterfaceName,
-		routingTable:   config.RouteTable,
-		redirectByMark: config.RedirectByMark,
-		logger:         logger}
+		routingTable:       config.RouteTable,
+		redirectByMark:     config.RedirectByMark,
+		createDefaultRoute: config.CreateDefaultRoute,
+		logger:             logger}
 }
 
 func (client *Client) Start() error {
@@ -88,13 +90,17 @@ func (client *Client) Start() error {
 	go client.tunnel.WriteTo(*client.netInterface.Interface())
 	go client.netInterface.WriteTo(client.tunnel.WriteToTunnel)
 
-	err = client.netInterface.SetupRoutingSettings(
-		client.remoteAddress,
-		common.GetIpFromString(info.GatewayIp),
-		client.routingTable,
-		client.redirectByMark)
-	if err != nil {
-		return err
+	if client.createDefaultRoute {
+		err = client.netInterface.SetupRoutingSettings(
+			client.remoteAddress,
+			common.GetIpFromString(info.GatewayIp),
+			client.routingTable,
+			client.redirectByMark)
+		if err != nil {
+			return err
+		}
+	} else {
+		client.logger.Info("CreateDefaultRoute is disabled, skip routing setup")
 	}
 
 	return nil
