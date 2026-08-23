@@ -75,7 +75,7 @@ func (client *Client) Start() error {
 		return err
 	}
 
-	err = client.tunnel.ReserveConnection(client.ipAddress)
+	err = client.tunnel.ReserveConnection(client.ipAddress, info.SessionToken)
 	if err != nil {
 		return err
 	}

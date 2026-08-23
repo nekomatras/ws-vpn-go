@@ -14,6 +14,9 @@
 ### Run:
 - `sudo ./ws-vpn -config -config-path=./client.conf`
 Or:
+- `export $(grep -v '^#' examples/client.env | xa
+rgs)`
+- `sudo -E ./target/ws-vpn -env & disown`
 - `sudo ./ws-vpn -env`
 
 ### Setup GeoIp:

@@ -9,7 +9,7 @@ import (
 type Tunnel interface {
 	Run() error                                                 //Открываем тунель
 	RegisterHandlers(mux *http.ServeMux) error                  //Вехаем хендлеры, необходимые для тунеля
-	ReserveConnection(ip common.IpAddress) error                //Даем тунелю знать, что сервер выдал IP
+	ReserveConnection(ip common.IpAddress, token string) error  //Даем тунелю знать, что сервер выдал IP и токен сессии
 	SetConnectionCloseHandler(handler func (common.IpAddress))  //Вызываем, чтобы отчистить выданный адрес, когда клиент отваливается
 	WriteTo(target io.Writer) error                             //Читаем пакеты из тунеля и пишем в ...
 	WriteToTunnel(target common.IpAddress, packet []byte) error //Пишем пакет в тунель

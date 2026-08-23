@@ -159,15 +159,28 @@ func (server *Server) registerHandler(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
+		}
 
-			server.logger.Info(fmt.Sprintf("[%s] Reserve connection. Clinet IP: %s", common.GetRealIP(r), clientIp.String()))
-			server.tunnel.ReserveConnection(clientIp)
+		token, err := common.GenerateSessionToken()
+		if err != nil {
+			server.logger.Error(fmt.Sprintf("[%s] Unable to generate session token: %v", common.GetRealIP(r), err))
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		server.logger.Info(fmt.Sprintf("[%s] Reserve connection. Clinet IP: %s", common.GetRealIP(r), clientIp.String()))
+		if err := server.tunnel.ReserveConnection(clientIp, token); err != nil {
+			server.logger.Error(fmt.Sprintf("[%s] Unable to reserve connection: %v", common.GetRealIP(r), err))
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		clientInfo := server.serverInfo
 		clientInfo.ClientIp = fmt.Sprintf("%s/%d", clientIp.String(), server.netManager.GetSubNet())
+		clientInfo.SessionToken = token
 
-		server.logger.Info(fmt.Sprintf("[%s] Send info: %+v", common.GetRealIP(r), clientInfo))
+		server.logger.Info(fmt.Sprintf("[%s] Send info: MTU=%d GatewayIp=%s TunnelPath=%s ClientIp=%s",
+			common.GetRealIP(r), clientInfo.MTU, clientInfo.GatewayIp, clientInfo.TunnelPath, clientInfo.ClientIp))
 		clientInfo.WriteToResponse(w)
 		w.WriteHeader(http.StatusAccepted)
 	} else {

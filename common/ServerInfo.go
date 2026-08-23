@@ -10,6 +10,7 @@ type ServerInfo struct {
 	GatewayIp             string
 	TunnelPath            string
 	ClientIp              string
+	SessionToken          string
 }
 
 func (info ServerInfo) WriteToResponse(w http.ResponseWriter) {

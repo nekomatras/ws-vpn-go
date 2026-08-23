@@ -56,8 +56,9 @@ func New(tunnelPath string, key string, serverInfo common.ServerInfo, logger *sl
 func (tunnel *WsTunnel) checkClientAddress(request *http.Request) bool {
 	clientAddress := request.Header.Get("ClientIP")
 	ip := common.GetIpFromString(clientAddress)
+	token := request.Header.Get("SessionToken")
 
-	if !tunnel.clinetConnectionRegister.Contains(ip) {
+	if !tunnel.clinetConnectionRegister.CheckToken(ip, token) {
 		tunnel.logger.Warn(fmt.Sprintf("Ip check failed. Requested address: %s", ip.String()))
 		return false
 	}
@@ -137,12 +138,8 @@ func (tunnel *WsTunnel) SetConnectionCloseHandler(handler func (common.IpAddress
 	tunnel.closeConnectionHandler = handler
 }
 
-func (tunnel *WsTunnel) ReserveConnection(ip common.IpAddress) error {
-	if (tunnel.clinetConnectionRegister.Contains(ip)) {
-		return fmt.Errorf("connection for [%s] already exist", ip.String())
-	}
-
-	tunnel.clinetConnectionRegister.Add(ip, nil)
+func (tunnel *WsTunnel) ReserveConnection(ip common.IpAddress, token string) error {
+	tunnel.clinetConnectionRegister.Add(ip, token)
 	return nil
 }
 

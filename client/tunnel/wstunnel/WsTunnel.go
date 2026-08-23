@@ -19,7 +19,8 @@ type WsTunnel struct {
 	remoteURL string
 	key string
 
-	clientIp common.IpAddress
+	clientIp     common.IpAddress
+	sessionToken string
 
 	wsTunnel *websocket.Conn
 
@@ -92,7 +93,7 @@ func (tunnel *WsTunnel) RegisterHandlers(mux *http.ServeMux) error {
 	return fmt.Errorf("%s", errMsg)
 }
 
-func (tunnel *WsTunnel) ReserveConnection(ip common.IpAddress) error {
+func (tunnel *WsTunnel) ReserveConnection(ip common.IpAddress, token string) error {
 
 	if tunnel.clientIp != common.GetAllZeroIp() {
 		return fmt.Errorf(
@@ -105,6 +106,7 @@ func (tunnel *WsTunnel) ReserveConnection(ip common.IpAddress) error {
 	}
 
 	tunnel.clientIp = ip
+	tunnel.sessionToken = token
 	return nil
 }
 
@@ -120,6 +122,7 @@ func (tunnel *WsTunnel) tryConnectToRemote() error {
 	header := make(http.Header)
 	header.Add("Key", tunnel.key)
 	header.Add("ClientIP", tunnel.clientIp.String())
+	header.Add("SessionToken", tunnel.sessionToken)
 
 	wsPath := strings.Replace(tunnel.remoteURL, "https://", "", 1)
 
