@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -12,6 +13,9 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+const PongWait = 3 * time.Minute
+const writeWait = 1 * time.Second
 
 type WsTunnel struct {
 
@@ -68,12 +72,6 @@ func (tunnel *WsTunnel) checkClientAddress(request *http.Request) bool {
 	return true
 }
 
-// handleConnectionClosed detaches the dead socket but keeps the ip+token
-// reservation intact for reservationTTL, so a client that lost the socket
-// to a transient network blip can reconnect with its existing SessionToken
-// without going through /register again. If nothing reclaims the
-// reservation (reconnect, or a fresh /register for the same MAC) before
-// the TTL expires, it's freed so the address can be reassigned.
 func (tunnel *WsTunnel) handleConnectionClosed(clientIp common.IpAddress) {
 	epoch, ok := tunnel.clinetConnectionRegister.Update(clientIp, nil)
 	if !ok || tunnel.reservationTTL <= 0 {
@@ -102,6 +100,19 @@ func (tunnel *WsTunnel) connectionHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	defer ws.Close()
+
+	ws.SetReadDeadline(time.Now().Add(PongWait))
+	ws.SetPingHandler(func(appData string) error {
+		ws.SetReadDeadline(time.Now().Add(PongWait))
+
+		err := ws.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(writeWait))
+		if err == websocket.ErrCloseSent {
+			return nil
+		} else if e, ok := err.(net.Error); ok && e.Temporary() { //nolint:staticcheck // mirrors gorilla's own default ping handler
+			return nil
+		}
+		return err
+	})
 
 	clientIP := common.GetIpFromString(r.Header.Get("ClientIp"))
 	if clientIP == common.GetAllZeroIp() {

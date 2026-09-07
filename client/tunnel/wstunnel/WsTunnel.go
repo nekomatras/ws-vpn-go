@@ -15,6 +15,8 @@ import (
 
 const InitialBackoff = 1 * time.Second
 const MaxBackoff = 30 * time.Second
+const PingInterval = 1 * time.Minute
+const PongWait = 3 * time.Minute
 
 type WsTunnel struct {
 	remoteURL string
@@ -100,13 +102,6 @@ func (tunnel *WsTunnel) SetConnectionCloseHandler(handler func (common.IpAddress
 	tunnel.logger.Error("Not implementod method called: " + errMsg)
 }
 
-// reconnect returns the current live connection, dialing a new one if
-// necessary. Concurrent callers (the read loop in WriteTo and the write
-// path in WriteToTunnel both hit this on a dropped connection) share the
-// same in-flight dial instead of racing on tunnel.wsTunnel: only the first
-// caller actually dials, the rest block on the mutex and reuse its result.
-// It retries indefinitely with exponential backoff so a transient network
-// blip (wifi switch, sleep/wake, brief outage) recovers on its own.
 func (tunnel *WsTunnel) reconnect() *websocket.Conn {
 	tunnel.mutex.Lock()
 	defer tunnel.mutex.Unlock()
@@ -122,6 +117,7 @@ func (tunnel *WsTunnel) reconnect() *websocket.Conn {
 		conn, err := tunnel.dial()
 		if err == nil {
 			tunnel.wsTunnel = conn
+			go tunnel.pingLoop(conn)
 			return conn
 		}
 
@@ -137,10 +133,6 @@ func (tunnel *WsTunnel) reconnect() *websocket.Conn {
 	}
 }
 
-// invalidate drops the cached connection if it is still the one that just
-// failed, so the next reconnect() call dials a fresh one. Guarded so a
-// stale failure from an already-replaced connection can't clobber a newer
-// live one.
 func (tunnel *WsTunnel) invalidate(conn *websocket.Conn) {
 	tunnel.mutex.Lock()
 	defer tunnel.mutex.Unlock()
@@ -162,5 +154,31 @@ func (tunnel *WsTunnel) dial() (*websocket.Conn, error) {
 		return nil, fmt.Errorf("web-socket connection error: %w", err)
 	}
 
+	conn.SetReadDeadline(time.Now().Add(PongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(PongWait))
+	})
+
 	return conn, nil
+}
+
+func (tunnel *WsTunnel) pingLoop(conn *websocket.Conn) {
+	ticker := time.NewTicker(PingInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		tunnel.mutex.Lock()
+		current := tunnel.wsTunnel
+		tunnel.mutex.Unlock()
+
+		if current != conn {
+			return
+		}
+
+		if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(PingInterval)); err != nil {
+			tunnel.logger.Warn(fmt.Sprintf("WebSocket ping error: %v; reconnecting", err))
+			tunnel.invalidate(conn)
+			return
+		}
+	}
 }
